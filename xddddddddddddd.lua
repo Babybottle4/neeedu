@@ -841,44 +841,207 @@ end
 
 local function CatAimbot(on)
 	getgenv().FireBallAimbot=on;if not on then return end
-	local order={15,14,12,17,13,10,4};local idx=1;local last=0
+	
+	print('Catacombs Fireball Aimbot: Starting...')
+	-- Target order: Dominators, Judgers, Lower Guards, Hell Emperor, Demons, Upper Guards, Veterans
+	local targetOrder = { 15, 14, 12, 17, 13, 10, 4 }
+	local currentTargetIndex = 1
+	local lastFireballTime = 0
+
 	task.spawn(function()
 		while getgenv().FireBallAimbot do
-			local pl=P.LocalPlayer;if pl and pl.Character and pl.Character:FindFirstChild('HumanoidRootPart')then
-				local hum=pl.Character:FindFirstChild('Humanoid');if hum and hum.Health<=0 then getgenv().FireBallAimbot=false;cfg.FireBallAimbot=false;save();break end
-				local now=tick();if(now-last)>=(cfg.cityFireballCooldown or 0.2)then
-					local e=workspace:FindFirstChild('Enemies');if e then
-						local folder=e:FindFirstChild(tostring(order[idx]))
-						if folder and folder:IsA('Folder')then
-							local pos=Vector3.new(order[idx]*20,5,order[idx]*10)
-							for _,ch in pairs(folder:GetChildren())do if ch:IsA('Model')and ch:FindFirstChild('HumanoidRootPart')then pos=ch.HumanoidRootPart.Position;break elseif ch:IsA('BasePart')then pos=ch.Position;break end end
-							local ok=pcall(function()fireAt(pos)end);last=now;idx=idx%#order+1;task.wait(ok and 0.3 or 0.1)
-						else idx=idx%#order+1;task.wait(0.1)end
-					else task.wait(0.5)end
-				else task.wait(0.05)end
-			else task.wait(0.1)end
+			local player = P.LocalPlayer
+			if player and player.Character and player.Character:FindFirstChild('HumanoidRootPart') then
+				-- Check if player is dead
+				local humanoid = player.Character:FindFirstChild('Humanoid')
+				if humanoid and humanoid.Health <= 0 then
+					print('Catacombs Fireball Aimbot: Player is dead, stopping...')
+					getgenv().FireBallAimbot = false
+					cfg.FireBallAimbot = false
+					save()
+					break
+				end
+
+				local currentTime = tick()
+
+				-- Check cooldown (use same cooldown as City Aimbot)
+				if (currentTime - lastFireballTime) >= (cfg.cityFireballCooldown or 0.2) then
+					local targetFolderNumber = targetOrder[currentTargetIndex]
+					local enemies = workspace:FindFirstChild('Enemies')
+
+					if enemies then
+						local targetFolder = enemies:FindFirstChild(tostring(targetFolderNumber))
+						if targetFolder and targetFolder:IsA('Folder') then
+							-- Get target position (use first mob or folder position)
+							local targetPosition = Vector3.new(0, 0, 0)
+							local foundMob = false
+
+							for _, child in pairs(targetFolder:GetChildren()) do
+								if child:IsA('Model') and child:FindFirstChild('HumanoidRootPart') then
+									targetPosition = child.HumanoidRootPart.Position
+									foundMob = true
+									break
+								elseif child:IsA('BasePart') then
+									targetPosition = child.Position
+									foundMob = true
+									break
+								end
+							end
+
+							-- If no mob found, use folder position
+							if not foundMob then
+								targetPosition = Vector3.new(targetFolderNumber * 20, 5, targetFolderNumber * 10)
+							end
+
+							-- Fire the fireball
+							local success = pcall(function()
+								fireAt(targetPosition)
+							end)
+
+							if success then
+								print('Catacombs Fireball Aimbot: Fired at folder ' .. targetFolderNumber .. ' (' .. currentTargetIndex .. '/7) at position ' .. tostring(targetPosition))
+								lastFireballTime = currentTime
+
+								-- Move to next target
+								currentTargetIndex = currentTargetIndex + 1
+
+								-- Reset to first target if completed cycle
+								if currentTargetIndex > #targetOrder then
+									currentTargetIndex = 1
+									print('Catacombs Fireball Aimbot: Completed cycle, restarting...')
+								end
+
+								-- Wait before next target (same as City Aimbot)
+								task.wait(0.3)
+							else
+								print('Catacombs Fireball Aimbot: Failed to fire at folder ' .. targetFolderNumber .. ', moving to next...')
+								currentTargetIndex = currentTargetIndex + 1
+								if currentTargetIndex > #targetOrder then
+									currentTargetIndex = 1
+								end
+								task.wait(0.1)
+							end
+						else
+							print('Catacombs Fireball Aimbot: Folder ' .. targetFolderNumber .. ' not found, moving to next...')
+							currentTargetIndex = currentTargetIndex + 1
+							if currentTargetIndex > #targetOrder then
+								currentTargetIndex = 1
+							end
+							task.wait(0.1)
+						end
+					else
+						print('Catacombs Fireball Aimbot: workspace.Enemies not found')
+						task.wait(0.5)
+					end
+				else
+					task.wait(0.05)
+				end
+			else
+				task.wait(0.1)
+			end
 		end
 	end)
 end
 
 local function CityAimbot(on)
 	getgenv().FireBallAimbotCity=on;if not on then return end
-	local o={5,9,8,6,3};local idx,last=1,0
+	
+	print('City Fireball Aimbot: Starting...')
+	-- Simple target order: 5, 9, 8, 6, 3
+	local targetOrder = { 5, 9, 8, 6, 3 }
+	local currentTargetIndex = 1
+	local lastFireballTime = 0
+
 	task.spawn(function()
 		while getgenv().FireBallAimbotCity do
-			local c,h,hrp=charHum()
-			if not hrp then task.wait(0.1) else
-				if h and h.Health<=0 then getgenv().FireBallAimbotCity=false;cfg.FireBallAimbotCity=false;save();break end
-				local now=tick();if(now-last)>=(cfg.cityFireballCooldown or 0.5)then
-					local e=workspace:FindFirstChild('Enemies');if e then
-						local folder=e:FindFirstChild(tostring(o[idx]))
-						if folder and folder:IsA('Folder')then
-							local pos=Vector3.new(o[idx]*20,5,o[idx]*10)
-							for _,ch in ipairs(folder:GetChildren())do local p=ch:IsA('Model')and ch:FindFirstChild('HumanoidRootPart')or(ch:IsA('BasePart')and ch);if p then pos=p.Position;break end end
-							fireAt(pos);last=now;idx=idx%#o+1;task.wait(0.3)
-						else idx=idx%#o+1;task.wait(0.1)end
-					else task.wait(0.5)end
-				else task.wait(0.05)end
+			local player = P.LocalPlayer
+			if player and player.Character and player.Character:FindFirstChild('HumanoidRootPart') then
+				-- Check if player is dead
+				local humanoid = player.Character:FindFirstChild('Humanoid')
+				if humanoid and humanoid.Health <= 0 then
+					print('City Fireball Aimbot: Player is dead, stopping...')
+					getgenv().FireBallAimbotCity = false
+					cfg.FireBallAimbotCity = false
+					save()
+					break
+				end
+
+				local currentTime = tick()
+
+				-- Check cooldown
+				if (currentTime - lastFireballTime) >= (cfg.cityFireballCooldown or 0.2) then
+					local targetFolderNumber = targetOrder[currentTargetIndex]
+					local enemies = workspace:FindFirstChild('Enemies')
+
+					if enemies then
+						local targetFolder = enemies:FindFirstChild(tostring(targetFolderNumber))
+						if targetFolder and targetFolder:IsA('Folder') then
+							-- Get target position (use first mob or folder position)
+							local targetPosition = Vector3.new(0, 0, 0)
+							local foundMob = false
+
+							for _, child in pairs(targetFolder:GetChildren()) do
+								if child:IsA('Model') and child:FindFirstChild('HumanoidRootPart') then
+									targetPosition = child.HumanoidRootPart.Position
+									foundMob = true
+									break
+								elseif child:IsA('BasePart') then
+									targetPosition = child.Position
+									foundMob = true
+									break
+								end
+							end
+
+							-- If no mob found, use folder position
+							if not foundMob then
+								targetPosition = Vector3.new(targetFolderNumber * 20, 5, targetFolderNumber * 10)
+							end
+
+							-- Fire the fireball
+							local success = pcall(function()
+								fireAt(targetPosition)
+							end)
+
+							if success then
+								print('City Fireball Aimbot: Fired at folder ' .. targetFolderNumber .. ' (' .. currentTargetIndex .. '/5) at position ' .. tostring(targetPosition))
+								lastFireballTime = currentTime
+
+								-- Move to next target
+								currentTargetIndex = currentTargetIndex + 1
+
+								-- Reset to first target if completed cycle
+								if currentTargetIndex > #targetOrder then
+									currentTargetIndex = 1
+									print('City Fireball Aimbot: Completed cycle, restarting...')
+								end
+
+								-- Wait before next target
+								task.wait(0.3)
+							else
+								print('City Fireball Aimbot: Failed to fire at folder ' .. targetFolderNumber .. ', moving to next...')
+								currentTargetIndex = currentTargetIndex + 1
+								if currentTargetIndex > #targetOrder then
+									currentTargetIndex = 1
+								end
+								task.wait(0.1)
+							end
+						else
+							print('City Fireball Aimbot: Folder ' .. targetFolderNumber .. ' not found, moving to next...')
+							currentTargetIndex = currentTargetIndex + 1
+							if currentTargetIndex > #targetOrder then
+								currentTargetIndex = 1
+							end
+							task.wait(0.1)
+						end
+					else
+						print('City Fireball Aimbot: workspace.Enemies not found')
+						task.wait(0.5)
+					end
+				else
+					task.wait(0.05)
+				end
+			else
+				task.wait(0.1)
 			end
 		end
 	end)
