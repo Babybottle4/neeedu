@@ -847,6 +847,17 @@ local function CatAimbot(on)
 	local targetOrder = { 15, 14, 12, 17, 13, 10, 4 }
 	local currentTargetIndex = 1
 	local lastFireballTime = 0
+	
+	-- Strategic fallback positions for empty folders (near typical spawn areas)
+	local fallbackPositions = {
+		[15] = Vector3.new(-200, 45, -300),  -- Dominators area
+		[14] = Vector3.new(-180, 50, -280),  -- Judgers area
+		[12] = Vector3.new(-160, 40, -260),  -- Lower Guards area
+		[17] = Vector3.new(-220, 55, -320),  -- Hell Emperor area
+		[13] = Vector3.new(-140, 45, -240),  -- Demons area
+		[10] = Vector3.new(-120, 40, -220),  -- Upper Guards area
+		[4] = Vector3.new(-100, 35, -200),   -- Veterans area
+	}
 
 	task.spawn(function()
 		while getgenv().FireBallAimbot do
@@ -880,23 +891,36 @@ local function CatAimbot(on)
 							local foundMob = false
 
 							for _, child in pairs(children) do
+								print('Catacombs Fireball Aimbot: Checking child: ' .. child.Name .. ' (Type: ' .. child.ClassName .. ')')
 								if child:IsA('Model') and child:FindFirstChild('HumanoidRootPart') then
-									targetPosition = child.HumanoidRootPart.Position
-									foundMob = true
-									print('Catacombs Fireball Aimbot: Found Model mob at ' .. tostring(targetPosition))
-									break
-								elseif child:IsA('BasePart') then
-									targetPosition = child.Position
-									foundMob = true
-									print('Catacombs Fireball Aimbot: Found BasePart mob at ' .. tostring(targetPosition))
-									break
+									local hrp = child:FindFirstChild('HumanoidRootPart')
+									if hrp and hrp.Position then
+										targetPosition = hrp.Position
+										foundMob = true
+										print('Catacombs Fireball Aimbot: Found Model mob "' .. child.Name .. '" at ' .. tostring(targetPosition))
+										break
+									else
+										print('Catacombs Fireball Aimbot: Model "' .. child.Name .. '" has invalid HumanoidRootPart')
+									end
+								elseif child:IsA('BasePart') and child.Position then
+									-- Validate the position is not at origin or invalid
+									if child.Position ~= Vector3.new(0, 0, 0) then
+										targetPosition = child.Position
+										foundMob = true
+										print('Catacombs Fireball Aimbot: Found BasePart mob "' .. child.Name .. '" at ' .. tostring(targetPosition))
+										break
+									else
+										print('Catacombs Fireball Aimbot: BasePart "' .. child.Name .. '" has invalid position (0,0,0)')
+									end
+								else
+									print('Catacombs Fireball Aimbot: Skipping child "' .. child.Name .. '" (not a valid mob type)')
 								end
 							end
 
-							-- If no mob found, use calculated folder position to maintain cycle
+							-- If no mob found, use strategic fallback position to maintain cycle
 							if not foundMob then
-								targetPosition = Vector3.new(targetFolderNumber * 20, 5, targetFolderNumber * 10)
-								print('Catacombs Fireball Aimbot: No mobs in folder ' .. targetFolderNumber .. ', firing at calculated position ' .. tostring(targetPosition))
+								targetPosition = fallbackPositions[targetFolderNumber] or Vector3.new(targetFolderNumber * 20, 5, targetFolderNumber * 10)
+								print('Catacombs Fireball Aimbot: No mobs in folder ' .. targetFolderNumber .. ', firing at strategic position ' .. tostring(targetPosition))
 							end
 
 							-- Fire the fireball (always fire to maintain cycle)
@@ -961,6 +985,15 @@ local function CityAimbot(on)
 	local targetOrder = { 5, 9, 8, 6, 3 }
 	local currentTargetIndex = 1
 	local lastFireballTime = 0
+	
+	-- Strategic fallback positions for empty folders (near typical city spawn areas)
+	local fallbackPositions = {
+		[5] = Vector3.new(120, 25, 80),   -- City area 5
+		[9] = Vector3.new(200, 30, 160),  -- City area 9
+		[8] = Vector3.new(180, 25, 140),  -- City area 8
+		[6] = Vector3.new(140, 30, 100),  -- City area 6
+		[3] = Vector3.new(80, 20, 60),    -- City area 3
+	}
 
 	task.spawn(function()
 		while getgenv().FireBallAimbotCity do
@@ -994,23 +1027,36 @@ local function CityAimbot(on)
 							local foundMob = false
 
 							for _, child in pairs(children) do
+								print('City Fireball Aimbot: Checking child: ' .. child.Name .. ' (Type: ' .. child.ClassName .. ')')
 								if child:IsA('Model') and child:FindFirstChild('HumanoidRootPart') then
-									targetPosition = child.HumanoidRootPart.Position
-									foundMob = true
-									print('City Fireball Aimbot: Found Model mob at ' .. tostring(targetPosition))
-									break
-								elseif child:IsA('BasePart') then
-									targetPosition = child.Position
-									foundMob = true
-									print('City Fireball Aimbot: Found BasePart mob at ' .. tostring(targetPosition))
-									break
+									local hrp = child:FindFirstChild('HumanoidRootPart')
+									if hrp and hrp.Position then
+										targetPosition = hrp.Position
+										foundMob = true
+										print('City Fireball Aimbot: Found Model mob "' .. child.Name .. '" at ' .. tostring(targetPosition))
+										break
+									else
+										print('City Fireball Aimbot: Model "' .. child.Name .. '" has invalid HumanoidRootPart')
+									end
+								elseif child:IsA('BasePart') and child.Position then
+									-- Validate the position is not at origin or invalid
+									if child.Position ~= Vector3.new(0, 0, 0) then
+										targetPosition = child.Position
+										foundMob = true
+										print('City Fireball Aimbot: Found BasePart mob "' .. child.Name .. '" at ' .. tostring(targetPosition))
+										break
+									else
+										print('City Fireball Aimbot: BasePart "' .. child.Name .. '" has invalid position (0,0,0)')
+									end
+								else
+									print('City Fireball Aimbot: Skipping child "' .. child.Name .. '" (not a valid mob type)')
 								end
 							end
 
-							-- If no mob found, use calculated folder position to maintain cycle
+							-- If no mob found, use strategic fallback position to maintain cycle
 							if not foundMob then
-								targetPosition = Vector3.new(targetFolderNumber * 20, 5, targetFolderNumber * 10)
-								print('City Fireball Aimbot: No mobs in folder ' .. targetFolderNumber .. ', firing at calculated position ' .. tostring(targetPosition))
+								targetPosition = fallbackPositions[targetFolderNumber] or Vector3.new(targetFolderNumber * 20, 5, targetFolderNumber * 10)
+								print('City Fireball Aimbot: No mobs in folder ' .. targetFolderNumber .. ', firing at strategic position ' .. tostring(targetPosition))
 							end
 
 							-- Fire the fireball (always fire to maintain cycle)
