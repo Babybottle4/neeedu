@@ -23,11 +23,41 @@ local cfg={
 	AutoNinjaSideTask=false,AutoAnimatronicsSideTask=false,AutoMutantsSideTask=false,DualExoticShop=false,
 	VendingPotionAutoBuy=false,RemoveMapClutter=false,StatWebhook15m=false,KillAura=false,StatGui=false,
 	AutoInvisible=false,AutoResize=false,AutoFly=false,HealthExploit=false,GammaAimbot=false,InfiniteZoom=false,
+	AutoConsumePower=false,AutoConsumeHealth=false,AutoConsumeDefense=false,AutoConsumePsychic=false,AutoConsumeMagic=false,AutoConsumeMobility=false,AutoConsumeSuper=false,
 	fireballCooldown=0.1,cityFireballCooldown=0.5,universalFireballInterval=1.0,HideGUIKey='RightControl',
 }
 local function save()pcall(function()writefile('SuperPowerLeague_Config.json',H:JSONEncode(cfg))end)end
 local function load()pcall(function()if isfile('SuperPowerLeague_Config.json')then for k,v in pairs(H:JSONDecode(readfile('SuperPowerLeague_Config.json')))do cfg[k]=v end end end)end
 load()
+
+-- Teleport exotic stores to specific positions instantly
+task.spawn(function()
+	pcall(function()
+		local exoticStore = workspace.Pads.ExoticStore["1"]
+		local exoticStore2 = workspace.Pads.ExoticStore2["1"]
+
+		-- Target positions
+		local pos1 = Vector3.new(-167.33985900878906, 75.6653060913086, 156.6094207763672) -- ExoticStore
+		local pos2 = Vector3.new(-180.12326049804688, 75.6653060913086, 134.66819763183594) -- ExoticStore2
+
+		-- Move them by setting their CFrame
+		exoticStore.CFrame = CFrame.new(pos1)
+		exoticStore2.CFrame = CFrame.new(pos2)
+
+		print("Teleported ExoticStore and ExoticStore2 to target positions")
+	end)
+end)
+
+-- Train mobility script starts instantly
+task.spawn(function()
+	pcall(function()
+		local args = {}
+		while true do
+			game:GetService("ReplicatedStorage"):WaitForChild("Events", 9e9):WaitForChild("Train", 9e9):WaitForChild("TrainMobility", 9e9):FireServer(unpack(args))
+			task.wait(0.1) -- wait for 0.1 seconds before the next iteration
+		end
+	end)
+end)
 
 local function charHum()local c=LP.Character or LP.CharacterAdded:Wait();return c,c:FindFirstChildOfClass('Humanoid'),c:FindFirstChild('HumanoidRootPart')end
 local function ev(...)local n=RS;for _,p in ipairs({...})do n=n:WaitForChild(p,9e9)end;return n end
@@ -90,7 +120,7 @@ task.spawn(function()
 	end
 end)
 
-local G=Instance.new('ScreenGui');G.Name='SuperPowerLeagueGUI';G.ZIndexBehavior=Enum.ZIndexBehavior.Global;G.IgnoreGuiInset=true;G.ResetOnSpawn=false;G.Enabled=true
+local G=Instance.new('ScreenGui');G.Name='SuperPowerLeagueGUI';G.ZIndexBehavior=Enum.ZIndexBehavior.Global;G.IgnoreGuiInset=true;G.ResetOnSpawn=false;G.Enabled=false
 local function parentGui(gui)local p=(gethui and gethui())or game:FindFirstChildOfClass('CoreGui')or LP:WaitForChild('PlayerGui');if syn and syn.protect_gui and p==game:GetService('CoreGui')then pcall(syn.protect_gui,gui)end gui.Parent=p end
 parentGui(G)
 local function mk(t,pr,par)local i=Instance.new(t);for k,v in pairs(pr or{})do i[k]=v end;if par then i.Parent=par end;return i end
@@ -185,7 +215,7 @@ TB.InputBegan:Connect(function(i)if i.UserInputType==Enum.UserInputType.MouseBut
 TB.InputChanged:Connect(function(i)if i.UserInputType==Enum.UserInputType.MouseMovement then dragIn=i end end)
 U.InputChanged:Connect(function(i)if i==dragIn and drag then upd(i)end end)
 
-local Combat=Tab('Combat','⚔️');local Move=Tab('Movement','🏃');local Util=Tab('Utility','🔧');local Visual=Tab('Visual','👁️');local Quests=Tab('Quests','📋');local Shops=Tab('Shops','🛒');local Tele=Tab('Teleport','🧭');local HealthT=Tab('Health','❤️');local Conf=Tab('Config','⚙️')
+local Combat=Tab('Combat','⚔️');local Move=Tab('Movement','🏃');local Util=Tab('Utility','🔧');local Visual=Tab('Visual','👁️');local Quests=Tab('Quests','📋');local Shops=Tab('Shops','🛒');local Tele=Tab('Teleport','🧭');local HealthT=Tab('Health','❤️');local Potions=Tab('Potions','🧪');local Conf=Tab('Config','⚙️')
 
 local CScroll=mk('ScrollingFrame',{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,ScrollBarThickness=6,CanvasSize=UDim2.new(0,0,0,0)},Combat)
 local CLayout=mk('UIListLayout',{Padding=UDim.new(0,10),SortOrder=Enum.SortOrder.LayoutOrder},CScroll)
@@ -223,34 +253,75 @@ Btn(row,'Save Place',function()local _,_,hrp=charHum();if hrp then _G.__SavedCFr
 Btn(row,'Teleport To Save',function()local cf=_G.__SavedCFrame;local c=LP.Character;if cf and c then pcall(function()c:PivotTo(cf)end)end end)
 rowL:GetPropertyChangedSignal('AbsoluteContentSize'):Connect(function()row.Size=UDim2.new(1,0,0,rowL.AbsoluteContentSize.Y)end)
 
+title(LC,'Exotics')
+addTp(LC,{'Pads','ExoticStore','1'},'Exotic Store')
+addTp(LC,{'Pads','ExoticStore2','1'},'Dark Exotic Store')
+
 title(LC,'Stores')
-addTp(LC,{'Pads','ExoticStore','1'},'Exotic Store');addTp(LC,{'Pads','ExoticStore2','1'},'Dark Exotic Store')
-addTp(LC,{'Pads','Store','1'},'Starter Store');addTp(LC,{'Pads','Store','2'},'Supermarket');addTp(LC,{'Pads','Store','3'},'Gym Store')
-addTp(LC,{'Pads','Store','4'},'Necklace Store');addTp(LC,{'Pads','Store','5'},'Melee Store');addTp(LC,{'Pads','Store','6'},'Premium Shop')
-addTp(LC,{'Pads','Store','7'},'Armour Shop 1');addTp(LC,{'Pads','Store','8'},'Armour Shop 2');addTp(LC,{'Pads','Store','9'},'Tower Store')
-title(LC,'Wand Stores')
-addTp(LC,{'Pads','Wands','1'},'Wand Store 1');addTp(LC,{'Pads','Wands','2'},'Wand Store 2')
-title(LC,'Weight Stores')
-for i=1,5 do addTp(LC,{'Pads','Weight',tostring(i)},'Weight Store '..i)end
-title(LC,'Stand Stores')
-addTp(LC,{'Pads','StandIndex','1'},'Stand Store 1');addTp(LC,{'Pads','StandIndex','2'},'Greater Stands');addTp(LC,{'Pads','StandIndex','3'},'Demonic Stands')
-title(LC,'Deluxo Upgrades')
+addTp(LC,{'Pads','Store','1'},'Starter Store')
+addTp(LC,{'Pads','Store','9'},'Tower Store')
+
+title(LC,'Tools')
+addTp(LC,{'Pads','Store','2'},'Supermarket')
+
+title(LC,'Talismans')
+addTp(LC,{'Pads','Store','3'},'Gym Store')
+
+title(LC,'Necklaces')
+addTp(LC,{'Pads','Store','4'},'Necklace Store')
+
+title(LC,'Weapons')
+addTp(LC,{'Pads','Store','5'},'Melee Store')
+
+title(LC,'Avatars')
+addTp(LC,{'Pads','Store','12'},'Accessory Store')
+addTp(LC,{'Pads','Store','13'},'Fighter Helmets')
+addTp(LC,{'Pads','Store','10'},'Luxury Hats Store')
+
+title(LC,'Auras')
+addTp(LC,{'Pads','Store','11'},'Basic Trails Store')
+addTp(LC,{'Pads','Store','14'},'Advanced Trails')
+addTp(LC,{'Pads','Store','15'},'Legendary Trails')
+
+title(LC,'Transforms')
+addTp(LC,{'Pads','Store','6'},'Premium Shop')
+addTp(LC,{'Pads','Store','7'},'Armour Shop 1')
+addTp(LC,{'Pads','Store','8'},'Armour Shop 2')
 addTp(LC,{'Pads','DeluxoUpgrade','Credits'},'Deluxo Upgrade')
+
+title(LC,'Wands')
+addTp(LC,{'Pads','Wands','1'},'Wand Store 1')
+addTp(LC,{'Pads','Wands','2'},'Wand Store 2')
+
+title(LC,'Weights')
+for i=1,5 do addTp(LC,{'Pads','Weight',tostring(i)},'Weight Store '..i)end
+
 title(LC,'Questlines')
-addTp(LC,{'Pads','MainTasks','MainTask'},'Main Questline');addTp(LC,{'Pads','MainTasks','AQuest'},'Extra Questline')
-addTp(LC,{'Pads','MainTasks','LucaTask'},'Luca Questline');addTp(LC,{'Pads','MainTasks','ReaperTask'},'Reaper Questline')
-addTp(LC,{'Pads','MainTasks','GladiatorTask'},'Gladiator Questline');addTp(LC,{'Pads','MainTasks','TowerFacility'},'Tower Questline')
-addTp(LC,{'Pads','MainTasks','AncientQuests'},'Ancient Questline');addTp(LC,{'Pads','MainTasks','TankQuests'},'Defence Questline')
-addTp(LC,{'Pads','MainTasks','PowerQuests'},'Power Questline');addTp(LC,{'Pads','MainTasks','MagicQuests'},'Magic Questline')
-addTp(LC,{'Pads','MainTasks','MobilityQuests'},'Mobility Questline')
+addTp(LC,{'Pads','MainTasks','MainTask'},'Main Task')
+addTp(LC,{'Pads','MainTasks','AQuest'},'Aquest')
+addTp(LC,{'Pads','MainTasks','LucaTask'},'Luca Task')
+addTp(LC,{'Pads','MainTasks','TowerFacility'},'Tower Facility')
+addTp(LC,{'Pads','MainTasks','ReaperTask'},'Reaper Tasks')
+addTp(LC,{'Pads','MainTasks','GladiatorTask'},'Gladiator Task')
+addTp(LC,{'Pads','MainTasks','AncientQuests'},'Ancient Quests')
+addTp(LC,{'Pads','MainTasks','TankQuests'},'Tank')
+addTp(LC,{'Pads','MainTasks','PowerQuests'},'Fighter')
+addTp(LC,{'Pads','MainTasks','MagicQuests'},'Wizard')
+addTp(LC,{'Pads','MainTasks','MobilityQuests'},'Speedstar')
+
 title(LC,'Side Tasks')
-addTp(LC,{'Pads','SideTasks','1'},'Dishes Side Task');addTp(LC,{'Pads','SideTasks','2'},'Spawn Mob Task')
-addTp(LC,{'Pads','SideTasks','3'},'City Mob Tasks 1');addTp(LC,{'Pads','SideTasks','4'},'City Mob Tasks 2')
-addTp(LC,{'Pads','SideTasks','5'},'Ninja Mob Tasks');addTp(LC,{'Pads','SideTasks','7'},'Arena Mob Tasks')
+addTp(LC,{'Pads','SideTasks','1'},'House Tasks')
+addTp(LC,{'Pads','SideTasks','2'},'Hunter')
+addTp(LC,{'Pads','SideTasks','3'},'Commander')
+addTp(LC,{'Pads','SideTasks','4'},'Wizard')
+addTp(LC,{'Pads','SideTasks','7'},'Arena Investor')
+
 title(LC,'Experiments')
-addTp(LC,{'Experiment','FloorHitbox'},'Mobility Experiment');addTp(LC,{'Experiment','SurvivalHitbox'},'Health Experiment')
-addTp(LC,{'Pads','Telekinesis','Telekinesis'},'Psychic Experiment');addTp(LC,{'WallGame','WallHitbox'},'Power Experiment')
-addTp(LC,{'Experiment','Energy','15','Part'},'Magic Experiment')
+addTp(LC,{'Experiment','FloorHitbox'},'Floor')
+addTp(LC,{'Experiment','SurvivalHitbox'},'Survival')
+addTp(LC,{'Pads','Telekinesis','Telekinesis'},'Telekinesis')
+addTp(LC,{'WallGame','WallHitbox'},'Wall')
+addTp(LC,{'Experiment','Energy','15','Part'},'Energy')
 
 local NC={conn=nil,char=nil,desc=nil,orig={}}
 local function ncRec(p)if not NC.orig[p]then NC.orig[p]=p.CanCollide end end
@@ -465,6 +536,270 @@ local function TPlayerESP(on)
 	else
 		for p in pairs(boxes)do rm(p)end
 	end
+end
+
+local function TMobESP(on)
+    if on then
+        -- Enemy ESP (boxes + correct names; Catacombs Guards share one color)
+        -- Highlights all NPCs under workspace.Enemies["1".."n"] through walls.
+        
+        local Players = game:GetService("Players")
+        local RunService = game:GetService("RunService")
+        local LocalPlayer = Players.LocalPlayer
+        
+        -- Bucket -> Display Name
+        local BUCKET_NAME = {
+            ["1"]="Goblin", ["2"]="Thug", ["3"]="Gym Rat", ["4"]="Veteran", ["5"]="Yakuza",
+            ["6"]="Mutant", ["7"]="Samurai", ["8"]="Ninja", ["9"]="Animatronic",
+            ["10"]="Catacombs Guard", ["11"]="Catacombs Guard", ["12"]="Catacombs Guard",
+            ["13"]="Demon", ["14"]="The Judger", ["15"]="Dominator", ["16"]="?", ["17"]="The Emperor",
+            ["18"]="Ancient Gladiator", ["19"]="Old Knight",
+        }
+        
+        -- Same color for all Catacombs Guards (10,11,12)
+        local CATACOMBS_IDS = { ["10"]=true, ["11"]=true, ["12"]=true }
+        local CATACOMBS_COLOR = Color3.fromRGB(0, 255, 140)
+        
+        getgenv().EnemyESP2 = getgenv().EnemyESP2 or {}
+        local M = getgenv().EnemyESP2
+        if M.enabled then return end
+        M.enabled = false
+        M._conns = {}
+        M._records = {} -- rootModel -> {box, bill, billLabel, part, conns}
+        
+        local HOLDER = Instance.new("Folder")
+        HOLDER.Name = "EnemyESP2_Holder"
+        pcall(function() HOLDER.Parent = game:GetService("CoreGui") end)
+        if not HOLDER.Parent then
+            HOLDER.Parent = LocalPlayer:WaitForChild("PlayerGui")
+        end
+        
+        local function enemiesRoot() return workspace:FindFirstChild("Enemies") end
+        
+        local function bucketOf(inst)
+            local root = enemiesRoot()
+            if not root then return nil end
+            local node = inst
+            while node and node ~= root do
+                if node.Parent == root and tonumber(node.Name) ~= nil then
+                    return node
+                end
+                node = node.Parent
+            end
+            return nil
+        end
+        
+        local function colorForBucketName(id)
+            id = tostring(id or "")
+            if CATACOMBS_IDS[id] then
+                return CATACOMBS_COLOR
+            end
+            local n = tonumber(id) or 0
+            local hue = (n % 12) / 12
+            return Color3.fromHSV(hue, 0.85, 1)
+        end
+        
+        -- Avoid weapon/accessory parts
+        local WEAPON_HINTS = {"weapon","sword","blade","gun","bow","staff","club","knife","axe","mace","spear"}
+        local function looksLikeWeapon(name)
+            name = string.lower(tostring(name or ""))
+            for _, w in ipairs(WEAPON_HINTS) do
+                if string.find(name, w, 1, true) then return true end
+            end
+            return false
+        end
+        local function isAccessoryPart(p)
+            while p and p.Parent do
+                if p:IsA("Accessory") then return true end
+                p = p.Parent
+            end
+            return false
+        end
+        
+        local function pickBodyPart(model)
+            for _, n in ipairs({"HumanoidRootPart","UpperTorso","LowerTorso","Torso","Head"}) do
+                local p = model:FindFirstChild(n)
+                if p and p:IsA("BasePart") then return p end
+            end
+            if model.PrimaryPart and model.PrimaryPart:IsA("BasePart") then return model.PrimaryPart end
+            local best, score = nil, -1
+            for _, p in ipairs(model:GetDescendants()) do
+                if p:IsA("BasePart") and p.Parent then
+                    if not isAccessoryPart(p) and not looksLikeWeapon(p.Name) and p.Transparency < 1 then
+                        local s = p.Size; local sc = s.X*s.Y*s.Z
+                        if sc > score then best, score = p, sc end
+                    end
+                end
+            end
+            return best or model:FindFirstChildWhichIsA("BasePart", true)
+        end
+        
+        local function getDisplayName(model)
+            local b = bucketOf(model)
+            local id = b and b.Name or nil
+            if id and BUCKET_NAME[id] and BUCKET_NAME[id] ~= "" then
+                return BUCKET_NAME[id]
+            end
+            local hum = model:FindFirstChildOfClass("Humanoid")
+            if hum and hum.DisplayName and hum.DisplayName ~= "" then return hum.DisplayName end
+            for _, a in ipairs({"EnemyName","DisplayName","NameOverride","MobType","Type"}) do
+                local v = model:GetAttribute(a); if v and tostring(v) ~= "" then return tostring(v) end
+            end
+            return model.Name
+        end
+        
+        local function makeBox(part, col)
+            local box = Instance.new("BoxHandleAdornment")
+            box.Name = "EnemyESP2_Box"
+            box.ZIndex = 5
+            box.Color3 = col
+            box.AlwaysOnTop = true
+            box.Adornee = part
+            box.Transparency = 0.2
+            box.Size = part.Size + Vector3.new(0.2,0.2,0.2)
+            box.Parent = HOLDER
+            return box
+        end
+        
+        local function makeBill(part, text, col)
+            local bill = Instance.new("BillboardGui")
+            bill.Name = "EnemyESP2_Label"
+            bill.Adornee = part
+            bill.AlwaysOnTop = true
+            bill.Size = UDim2.new(0, 170, 0, 22)
+            bill.StudsOffset = Vector3.new(0, 3, 0)
+            bill.MaxDistance = 1e6
+            bill.Parent = HOLDER
+            
+            local tl = Instance.new("TextLabel")
+            tl.BackgroundTransparency = 1
+            tl.Size = UDim2.new(1, 0, 1, 0)
+            tl.Font = Enum.Font.GothamBold
+            tl.TextSize = 14
+            tl.TextColor3 = col
+            tl.TextStrokeTransparency = 0.3
+            tl.Text = text
+            tl.Parent = bill
+            return bill, tl
+        end
+        
+        local function clearRecord(model)
+            local rec = M._records[model]
+            if not rec then return end
+            for _, c in ipairs(rec.conns or {}) do pcall(function() c:Disconnect() end) end
+            if rec.box then rec.box:Destroy() end
+            if rec.bill then rec.bill:Destroy() end
+            M._records[model] = nil
+        end
+        
+        local function attachToModel(model)
+            if M._records[model] then return end
+            -- Must be under a numeric bucket and not a player character
+            if Players:GetPlayerFromCharacter(model) then return end
+            if not bucketOf(model) then return end
+            
+            local part = pickBodyPart(model); if not part then return end
+            local bucket = bucketOf(model)
+            local id = bucket.Name
+            local col = colorForBucketName(id)
+            local label = getDisplayName(model)
+            
+            local box = makeBox(part, col)
+            local bill, billLabel = makeBill(part, label, col)
+            
+            local rec = {box=box, bill=bill, billLabel=billLabel, part=part, conns={}}
+            M._records[model] = rec
+            
+            table.insert(rec.conns, part:GetPropertyChangedSignal("Size"):Connect(function()
+                if rec.box then rec.box.Size = part.Size + Vector3.new(0.2,0.2,0.2) end
+            end))
+            
+            -- If a better body part appears later (e.g., HRP spawns), retarget once
+            table.insert(rec.conns, model.DescendantAdded:Connect(function(inst)
+                if inst:IsA("BasePart") then
+                    local better = pickBodyPart(model)
+                    if better and better ~= rec.part then
+                        rec.part = better
+                        if rec.box then rec.box.Adornee = better end
+                        if rec.bill then rec.bill.Adornee = better end
+                    end
+                end
+            end))
+            
+            -- Keep name in sync if attributes/humanoid change (optional)
+            local function refreshName()
+                if rec.billLabel then rec.billLabel.Text = getDisplayName(model) end
+            end
+            local hum = model:FindFirstChildOfClass("Humanoid")
+            if hum then
+                table.insert(rec.conns, hum:GetPropertyChangedSignal("DisplayName"):Connect(refreshName))
+            end
+            for _, a in ipairs({"EnemyName","DisplayName","NameOverride","MobType","Type"}) do
+                table.insert(rec.conns, model:GetAttributeChangedSignal(a):Connect(refreshName))
+            end
+            
+            table.insert(rec.conns, model.AncestryChanged:Connect(function(_, parent)
+                if parent == nil then clearRecord(model) end
+            end))
+        end
+        
+        local function tryAttach(inst)
+            local root = enemiesRoot(); if not root then return end
+            local node = inst
+            while node and node ~= root do
+                if node:IsA("Model") and bucketOf(node) then
+                    attachToModel(node); return
+                end
+                node = node.Parent
+            end
+        end
+        
+        local function fullScan()
+            local root = enemiesRoot(); if not root then return end
+            for _, bucket in ipairs(root:GetChildren()) do
+                if tonumber(bucket.Name) ~= nil then
+                    for _, inst in ipairs(bucket:GetDescendants()) do
+                        if inst:IsA("BasePart") or inst:IsA("Model") then tryAttach(inst) end
+                    end
+                end
+            end
+        end
+        
+        function M.Disable()
+            if not M.enabled then return end
+            for _, c in ipairs(M._conns) do pcall(function() c:Disconnect() end) end
+            M._conns = {}
+            for m in pairs(M._records) do clearRecord(m) end
+            HOLDER:ClearAllChildren()
+            M.enabled = false
+            print("[EnemyESP2] disabled")
+        end
+        
+        function M.Enable()
+            if M.enabled then return end
+            M.enabled = true
+            fullScan()
+            local root = enemiesRoot()
+            if root then
+                table.insert(M._conns, root.DescendantAdded:Connect(function(inst)
+                    task.defer(function() tryAttach(inst) end)
+                end))
+                table.insert(M._conns, root.DescendantRemoving:Connect(function(inst)
+                    if inst:IsA("Model") then clearRecord(inst) end
+                end))
+            end
+            -- periodic pass for streaming
+            table.insert(M._conns, RunService.Heartbeat:Connect(function() fullScan() end))
+            print("[EnemyESP2] enabled")
+        end
+        
+        M.Enable()
+    else
+        -- Disable ESP when toggle is turned off
+        if getgenv().EnemyESP2 and getgenv().EnemyESP2.Disable then
+            getgenv().EnemyESP2:Disable()
+        end
+    end
 end
 
 local function RemoveClutter()
@@ -725,6 +1060,16 @@ local function resolvePart(which)
 		end
 	end
 	
+	-- Handle workspace.CatacombsCity format with loadstring (legacy support)
+	if type(path)=='string' and path:find("workspace.CatacombsCity") then
+		local success, result = pcall(function()
+			return loadstring("return " .. path)()
+		end)
+		if success and result then
+			return result
+		end
+	end
+	
 	-- Fallback to original CatacombsCity method
 	local city=workspace:FindFirstChild('CatacombsCity');if not city then return nil end
 	local kids=city:GetChildren()
@@ -789,6 +1134,151 @@ local function TInfiniteZoom(on)
 	end
 end
 
+-- Potion consumption functions
+local function consumePotion(statType)
+    local Players = game:GetService("Players")
+    local ReplicatedStorage = game:GetService("ReplicatedStorage")
+    local LocalPlayer = Players.LocalPlayer
+    
+    -- Paths
+    local inventoryList = LocalPlayer.PlayerGui.Frames.Inventory.Content.Inventory.List.List
+    local equipRemote = ReplicatedStorage:WaitForChild("Events"):WaitForChild("Inventory"):WaitForChild("EquipItem")
+    
+    -- List of valid potion names for each stat
+local potionLists = {
+    Power = {
+        ["Power Barrel"] = true,
+        ["Power Bottle"] = true,
+        ["Power Crate"] = true,
+        ["Power Drink"] = true,
+        ["Power Potion"] = true
+    },
+    Health = {
+        ["Health Barrel"] = true,
+        ["Health Bottle"] = true,
+        ["Health Crate"] = true,
+        ["Health Drink"] = true,
+        ["Health Potion"] = true
+    },
+    Defense = {
+        ["Defense Barrel"] = true,
+        ["Defense Bottle"] = true,
+        ["Defense Crate"] = true,
+        ["Defense Drink"] = true,
+        ["Defense Potion"] = true
+    },
+    Psychic = {
+        ["Psychics Barrel"] = true,
+        ["Psychics Bottle"] = true,
+        ["Psychics Crate"] = true,
+        ["Psychics Drink"] = true,
+        ["Psychics Potion"] = true
+    },
+    Magic = {
+        ["Magic Barrel"] = true,
+        ["Magic Bottle"] = true,
+        ["Magic Crate"] = true,
+        ["Magic Drink"] = true,
+        ["Magic Potion"] = true
+    },
+    Mobility = {
+        ["Mobility Barrel"] = true,
+        ["Mobility Bottle"] = true,
+        ["Mobility Crate"] = true,
+        ["Mobility Drink"] = true,
+        ["Mobility Potion"] = true
+    },
+    Super = {
+        ["Super Barrel"] = true,
+        ["Super Bottle"] = true,
+        ["Super Crate"] = true,
+        ["Super Drink"] = true,
+        ["Super Potion"] = true
+    }
+}
+    
+    while getgenv()["AutoConsume" .. statType] do
+        task.wait(1) -- check every second
+        for _, item in pairs(inventoryList:GetChildren()) do
+            if item:FindFirstChild("ItemName") and item:FindFirstChild("ID") then
+                local itemName = item.ItemName.Text
+                if potionLists[statType][itemName] then
+                    local id = tonumber(item.ID.Value)
+                    if id then
+                        print("Using " .. statType .. " potion:", itemName, "ID:", id)
+                        equipRemote:FireServer(id)
+                        task.wait(0.1) -- wait 60s before using another potion
+                    end
+                end
+            end
+        end
+    end
+end
+
+-- Toggle functions for each stat
+local function TConsumePower(on)
+    cfg.AutoConsumePower = on
+    save()
+    getgenv().AutoConsumePower = on
+    if on then
+        task.spawn(function() consumePotion("Power") end)
+    end
+end
+
+local function TConsumeHealth(on)
+    cfg.AutoConsumeHealth = on
+    save()
+    getgenv().AutoConsumeHealth = on
+    if on then
+        task.spawn(function() consumePotion("Health") end)
+    end
+end
+
+local function TConsumeDefense(on)
+    cfg.AutoConsumeDefense = on
+    save()
+    getgenv().AutoConsumeDefense = on
+    if on then
+        task.spawn(function() consumePotion("Defense") end)
+    end
+end
+
+local function TConsumePsychic(on)
+    cfg.AutoConsumePsychic = on
+    save()
+    getgenv().AutoConsumePsychic = on
+    if on then
+        task.spawn(function() consumePotion("Psychic") end)
+    end
+end
+
+local function TConsumeMagic(on)
+    cfg.AutoConsumeMagic = on
+    save()
+    getgenv().AutoConsumeMagic = on
+    if on then
+        task.spawn(function() consumePotion("Magic") end)
+    end
+end
+
+local function TConsumeMobility(on)
+    cfg.AutoConsumeMobility = on
+    save()
+    getgenv().AutoConsumeMobility = on
+    if on then
+        task.spawn(function() consumePotion("Mobility") end)
+    end
+end
+
+local function TConsumeSuper(on)
+    cfg.AutoConsumeSuper = on
+    save()
+    getgenv().AutoConsumeSuper = on
+    if on then
+        task.spawn(function() consumePotion("Super") end)
+    end
+end
+
 local C1=Section(CScroll,'Mob FireBall Aimbot')
 Toggle(C1,'Universal FireBall Aimbot','UniversalFireBallAimbot',UFA);Slider(C1,'Universal Fireball Cooldown','universalFireballInterval',0.05,1.0,1.0,function()end)
 Toggle(C1,'FireBall Aimbot Catacombs Preset','FireBallAimbot',CatAimbot);Slider(C1,'Fireball Cooldown','fireballCooldown',0.05,1.0,0.1,function()end)
@@ -834,7 +1324,7 @@ Toggle(U1,'Stat Gui','StatGui',TStatGui)
 
 local V1=Section(Visual,'Visual Features')
 Toggle(V1,'Player ESP','PlayerESP',TPlayerESP)
-Toggle(V1,'Mob ESP','MobESP',function()end)
+Toggle(V1,'Mob ESP','MobESP',TMobESP)
 
 local Q1=Section(Quests,'Quest Automation')
 Toggle(Q1,'Dishes Side Task','AutoWashDishes',TWash)
@@ -849,6 +1339,15 @@ Toggle(S1,'Vending Machine','VendingPotionAutoBuy',TVend)
 local H1=Section(HealthT,'Health Exploit')
 mk('TextLabel',{Size=UDim2.new(1,-12,0,22),BackgroundTransparency=1,Text='Health Exploit',TextColor3=Color3.fromRGB(235,235,245),TextXAlignment=Enum.TextXAlignment.Left,TextScaled=true,Font=Enum.Font.GothamBold},H1)
 Toggle(H1,'Health Exploit','HealthExploit',THealthExploit)
+
+local P1=Section(Potions,'Auto Consume')
+Toggle(P1,'Consume Power','AutoConsumePower',TConsumePower)
+Toggle(P1,'Consume Health','AutoConsumeHealth',TConsumeHealth)
+Toggle(P1,'Consume Defense','AutoConsumeDefense',TConsumeDefense)
+Toggle(P1,'Consume Psychic','AutoConsumePsychic',TConsumePsychic)
+Toggle(P1,'Consume Magic','AutoConsumeMagic',TConsumeMagic)
+Toggle(P1,'Consume Mobility','AutoConsumeMobility',TConsumeMobility)
+Toggle(P1,'Consume Super','AutoConsumeSuper',TConsumeSuper)
 
 local Cfg=Section(Conf,'Configuration')
 local SB=Btn(Cfg,'Save Config',function()save()end)
@@ -878,6 +1377,13 @@ local LB=Btn(Cfg,'Load Config',function()
 		ap(cfg.HealthExploit,function()return getgenv().HealthExploit or false end,THealthExploit)
 		ap(cfg.GammaAimbot,function()return getgenv().GammaAimbot or false end,TGamma)
 		ap(cfg.InfiniteZoom,function()return getgenv().InfiniteZoom or false end,TInfiniteZoom)  -- ADD THIS LINE
+		ap(cfg.AutoConsumePower,function()return getgenv().AutoConsumePower or false end,TConsumePower)
+		ap(cfg.AutoConsumeHealth,function()return getgenv().AutoConsumeHealth or false end,TConsumeHealth)
+		ap(cfg.AutoConsumeDefense,function()return getgenv().AutoConsumeDefense or false end,TConsumeDefense)
+		ap(cfg.AutoConsumePsychic,function()return getgenv().AutoConsumePsychic or false end,TConsumePsychic)
+		ap(cfg.AutoConsumeMagic,function()return getgenv().AutoConsumeMagic or false end,TConsumeMagic)
+		ap(cfg.AutoConsumeMobility,function()return getgenv().AutoConsumeMobility or false end,TConsumeMobility)
+        ap(cfg.AutoConsumeSuper,function()return getgenv().AutoConsumeSuper or false end,TConsumeSuper)
 		getgenv().SmartPanic=cfg.SmartPanic and true or false
 	end
 end)
