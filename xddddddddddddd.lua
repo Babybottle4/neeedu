@@ -872,34 +872,44 @@ local function CatAimbot(on)
 					if enemies then
 						local targetFolder = enemies:FindFirstChild(tostring(targetFolderNumber))
 						if targetFolder and targetFolder:IsA('Folder') then
-							-- Get target position (use first mob or folder position)
-							local targetPosition = Vector3.new(0, 0, 0)
+							local children = targetFolder:GetChildren()
+							print('Catacombs Fireball Aimbot: Checking folder ' .. targetFolderNumber .. ' with ' .. #children .. ' children')
+							
+							-- Get target position (use first mob or calculated folder position)
+							local targetPosition = nil
 							local foundMob = false
 
-							for _, child in pairs(targetFolder:GetChildren()) do
+							for _, child in pairs(children) do
 								if child:IsA('Model') and child:FindFirstChild('HumanoidRootPart') then
 									targetPosition = child.HumanoidRootPart.Position
 									foundMob = true
+									print('Catacombs Fireball Aimbot: Found Model mob at ' .. tostring(targetPosition))
 									break
 								elseif child:IsA('BasePart') then
 									targetPosition = child.Position
 									foundMob = true
+									print('Catacombs Fireball Aimbot: Found BasePart mob at ' .. tostring(targetPosition))
 									break
 								end
 							end
 
-							-- If no mob found, use folder position
+							-- If no mob found, use calculated folder position to maintain cycle
 							if not foundMob then
 								targetPosition = Vector3.new(targetFolderNumber * 20, 5, targetFolderNumber * 10)
+								print('Catacombs Fireball Aimbot: No mobs in folder ' .. targetFolderNumber .. ', firing at calculated position ' .. tostring(targetPosition))
 							end
 
-							-- Fire the fireball
+							-- Fire the fireball (always fire to maintain cycle)
 							local success = pcall(function()
 								fireAt(targetPosition)
 							end)
 
 							if success then
-								print('Catacombs Fireball Aimbot: Fired at folder ' .. targetFolderNumber .. ' (' .. currentTargetIndex .. '/7) at position ' .. tostring(targetPosition))
+								if foundMob then
+									print('Catacombs Fireball Aimbot: Fired at folder ' .. targetFolderNumber .. ' (' .. currentTargetIndex .. '/7) mob position ' .. tostring(targetPosition))
+								else
+									print('Catacombs Fireball Aimbot: Fired at folder ' .. targetFolderNumber .. ' (' .. currentTargetIndex .. '/7) calculated position ' .. tostring(targetPosition))
+								end
 								lastFireballTime = currentTime
 
 								-- Move to next target
@@ -976,34 +986,44 @@ local function CityAimbot(on)
 					if enemies then
 						local targetFolder = enemies:FindFirstChild(tostring(targetFolderNumber))
 						if targetFolder and targetFolder:IsA('Folder') then
-							-- Get target position (use first mob or folder position)
-							local targetPosition = Vector3.new(0, 0, 0)
+							local children = targetFolder:GetChildren()
+							print('City Fireball Aimbot: Checking folder ' .. targetFolderNumber .. ' with ' .. #children .. ' children')
+							
+							-- Get target position (use first mob or calculated folder position)
+							local targetPosition = nil
 							local foundMob = false
 
-							for _, child in pairs(targetFolder:GetChildren()) do
+							for _, child in pairs(children) do
 								if child:IsA('Model') and child:FindFirstChild('HumanoidRootPart') then
 									targetPosition = child.HumanoidRootPart.Position
 									foundMob = true
+									print('City Fireball Aimbot: Found Model mob at ' .. tostring(targetPosition))
 									break
 								elseif child:IsA('BasePart') then
 									targetPosition = child.Position
 									foundMob = true
+									print('City Fireball Aimbot: Found BasePart mob at ' .. tostring(targetPosition))
 									break
 								end
 							end
 
-							-- If no mob found, use folder position
+							-- If no mob found, use calculated folder position to maintain cycle
 							if not foundMob then
 								targetPosition = Vector3.new(targetFolderNumber * 20, 5, targetFolderNumber * 10)
+								print('City Fireball Aimbot: No mobs in folder ' .. targetFolderNumber .. ', firing at calculated position ' .. tostring(targetPosition))
 							end
 
-							-- Fire the fireball
+							-- Fire the fireball (always fire to maintain cycle)
 							local success = pcall(function()
 								fireAt(targetPosition)
 							end)
 
 							if success then
-								print('City Fireball Aimbot: Fired at folder ' .. targetFolderNumber .. ' (' .. currentTargetIndex .. '/5) at position ' .. tostring(targetPosition))
+								if foundMob then
+									print('City Fireball Aimbot: Fired at folder ' .. targetFolderNumber .. ' (' .. currentTargetIndex .. '/5) mob position ' .. tostring(targetPosition))
+								else
+									print('City Fireball Aimbot: Fired at folder ' .. targetFolderNumber .. ' (' .. currentTargetIndex .. '/5) calculated position ' .. tostring(targetPosition))
+								end
 								lastFireballTime = currentTime
 
 								-- Move to next target
