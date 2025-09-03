@@ -1074,43 +1074,39 @@ local function CityAimbot(on)
 								print('City Fireball Aimbot: No mobs in folder ' .. targetFolderNumber .. ', firing at strategic position ' .. tostring(targetPosition))
 							end
 
-							-- Fire the fireball and ONLY advance if it actually fires
-							local fireballFired = false
+							-- Fire the fireball
 							local success = pcall(function()
 								fireAt(targetPosition)
-								fireballFired = true -- Mark that fireball was actually fired
 							end)
 
-							-- ONLY advance if both pcall succeeded AND fireball was actually fired
-							if success and fireballFired then
-								if foundMob then
-									print('City Fireball Aimbot: SUCCESS - Fired at folder ' .. targetFolderNumber .. ' (' .. currentTargetIndex .. '/5) mob position ' .. tostring(targetPosition))
-								else
-									print('City Fireball Aimbot: SUCCESS - Fired at folder ' .. targetFolderNumber .. ' (' .. currentTargetIndex .. '/5) calculated position ' .. tostring(targetPosition))
-								end
-								lastFireballTime = currentTime
-								targetAttempts[currentTargetIndex] = 0 -- Reset attempts for this target
-								currentTargetIndex = currentTargetIndex + 1
-								print('City Fireball Aimbot: ADVANCED to next target: ' .. currentTargetIndex .. '/5')
-
-								-- Reset to first target if completed cycle
-								if currentTargetIndex > #targetOrder then
-									currentTargetIndex = 1
-									print('City Fireball Aimbot: CYCLE COMPLETED - All 5 targets hit! Restarting...')
-								end
-
-								-- Smart wait timing for 5-folder system
-								task.wait(targetWaitTime)
+							-- Always advance to next target after firing (success or fail)
+							if foundMob then
+								print('City Fireball Aimbot: Fired at folder ' .. targetFolderNumber .. ' (' .. currentTargetIndex .. '/5) mob position ' .. tostring(targetPosition))
 							else
-								-- Fire attempt failed - DO NOT ADVANCE, retry same target
-								print('City Fireball Aimbot: FAILED - Could not fire at folder ' .. targetFolderNumber .. ' (' .. currentTargetIndex .. '/5) - Retrying same target...')
-								-- Wait before retry
-								task.wait(0.2)
+								print('City Fireball Aimbot: Fired at folder ' .. targetFolderNumber .. ' (' .. currentTargetIndex .. '/5) calculated position ' .. tostring(targetPosition))
 							end
+							
+							lastFireballTime = currentTime
+							currentTargetIndex = currentTargetIndex + 1
+							print('City Fireball Aimbot: Moving to next target: ' .. currentTargetIndex .. '/5')
+
+							-- Reset to first target if completed cycle
+							if currentTargetIndex > #targetOrder then
+								currentTargetIndex = 1
+								print('City Fireball Aimbot: Cycle completed, restarting...')
+							end
+
+							-- Wait before next target
+							task.wait(targetWaitTime)
 						else
-							print('City Fireball Aimbot: Folder ' .. targetFolderNumber .. ' not found, retrying same target...')
-							-- Don't advance to next target when folder is missing, retry the same one
-							task.wait(0.2)
+							print('City Fireball Aimbot: Folder ' .. targetFolderNumber .. ' not found, moving to next target...')
+							-- Move to next target if folder is missing
+							currentTargetIndex = currentTargetIndex + 1
+							if currentTargetIndex > #targetOrder then
+								currentTargetIndex = 1
+								print('City Fireball Aimbot: Cycle completed, restarting...')
+							end
+							task.wait(targetWaitTime)
 						end
 					else
 						print('City Fireball Aimbot: workspace.Enemies not found')
