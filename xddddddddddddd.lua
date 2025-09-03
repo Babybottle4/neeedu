@@ -981,8 +981,8 @@ local function CityAimbot(on)
 	getgenv().FireBallAimbotCity=on;if not on then return end
 	
 	print('City Fireball Aimbot: Starting...')
-	-- Simple target order: 5, 9, 8, 6, 3
-	local targetOrder = { 5, 9, 8, 6, 3 }
+	-- Simple target order: 5, 9, 8, 6, 3, 2
+	local targetOrder = { 5, 9, 8, 6, 3, 2 }
 	local currentTargetIndex = 1
 	local lastFireballTime = 0
 	
@@ -993,6 +993,7 @@ local function CityAimbot(on)
 		[8] = Vector3.new(180, 25, 140),  -- City area 8
 		[6] = Vector3.new(140, 30, 100),  -- City area 6
 		[3] = Vector3.new(80, 20, 60),    -- City area 3
+		[2] = Vector3.new(60, 25, 40),    -- City area 2
 	}
 
 	task.spawn(function()
@@ -1066,9 +1067,9 @@ local function CityAimbot(on)
 
 							if success then
 								if foundMob then
-									print('City Fireball Aimbot: Fired at folder ' .. targetFolderNumber .. ' (' .. currentTargetIndex .. '/5) mob position ' .. tostring(targetPosition))
+									print('City Fireball Aimbot: Fired at folder ' .. targetFolderNumber .. ' (' .. currentTargetIndex .. '/6) mob position ' .. tostring(targetPosition))
 								else
-									print('City Fireball Aimbot: Fired at folder ' .. targetFolderNumber .. ' (' .. currentTargetIndex .. '/5) calculated position ' .. tostring(targetPosition))
+									print('City Fireball Aimbot: Fired at folder ' .. targetFolderNumber .. ' (' .. currentTargetIndex .. '/6) calculated position ' .. tostring(targetPosition))
 								end
 								lastFireballTime = currentTime
 
