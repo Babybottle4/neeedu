@@ -1102,18 +1102,10 @@ local function CityAimbot(on)
 								-- Smart wait timing for 5-folder system
 								task.wait(targetWaitTime)
 							else
-								-- Fire attempt failed - still advance to next target to prevent multiple shots
-								print('City Fireball Aimbot: FAILED - Could not fire at folder ' .. targetFolderNumber .. ' (' .. currentTargetIndex .. '/5) - Moving to next target')
-								currentTargetIndex = currentTargetIndex + 1
-								
-								-- Reset to first target if completed cycle
-								if currentTargetIndex > #targetOrder then
-									currentTargetIndex = 1
-									print('City Fireball Aimbot: CYCLE COMPLETED - All 5 targets attempted! Restarting...')
-								end
-								
-								-- Wait before next attempt
-								task.wait(targetWaitTime)
+								-- Fire attempt failed - DO NOT ADVANCE, retry same target
+								print('City Fireball Aimbot: FAILED - Could not fire at folder ' .. targetFolderNumber .. ' (' .. currentTargetIndex .. '/5) - Retrying same target...')
+								-- Wait before retry
+								task.wait(0.2)
 							end
 						else
 							print('City Fireball Aimbot: Folder ' .. targetFolderNumber .. ' not found, retrying same target...')
