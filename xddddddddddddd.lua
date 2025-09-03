@@ -848,6 +848,11 @@ local function CatAimbot(on)
 	local currentTargetIndex = 1
 	local lastFireballTime = 0
 	
+	-- Initialize attempt counters for each target
+	for i = 1, #targetOrder do
+		targetAttempts[i] = 0
+	end
+	
 	-- Strategic fallback positions for empty folders (near typical spawn areas)
 	local fallbackPositions = {
 		[15] = Vector3.new(-200, 45, -300),  -- Dominators area
@@ -981,8 +986,8 @@ local function CityAimbot(on)
 	getgenv().FireBallAimbotCity=on;if not on then return end
 	
 	print('City Fireball Aimbot: Starting...')
-	-- Smart 6-folder system: 5, 9, 8, 6, 3, 2
-	local targetOrder = { 5, 9, 8, 6, 3, 2 }
+	-- Smart 5-folder system: 6, 9, 5, 3, 2
+	local targetOrder = { 6, 9, 5, 3, 2 }
 	local currentTargetIndex = 1
 	local lastFireballTime = 0
 	local targetAttempts = {} -- Track attempts per target
@@ -994,16 +999,15 @@ local function CityAimbot(on)
 	
 	-- Strategic fallback positions for empty folders (near typical city spawn areas)
 	local fallbackPositions = {
-		[5] = Vector3.new(120, 25, 80),   -- City area 5
-		[9] = Vector3.new(200, 30, 160),  -- City area 9
-		[8] = Vector3.new(180, 25, 140),  -- City area 8
 		[6] = Vector3.new(140, 30, 100),  -- City area 6
+		[9] = Vector3.new(200, 30, 160),  -- City area 9
+		[5] = Vector3.new(120, 25, 80),   -- City area 5
 		[3] = Vector3.new(80, 20, 60),    -- City area 3
 		[2] = Vector3.new(60, 25, 40),    -- City area 2
 	}
 	
-	-- Smart timing system for 6-folder optimization
-	local targetWaitTime = 0.15  -- Optimized for 6-folder system
+	-- Smart timing system for 5-folder optimization
+	local targetWaitTime = 0.15  -- Optimized for 5-folder system
 
 	task.spawn(function()
 		while getgenv().FireBallAimbotCity do
@@ -1024,7 +1028,7 @@ local function CityAimbot(on)
 				-- Check cooldown
 				if (currentTime - lastFireballTime) >= (cfg.cityFireballCooldown or 0.2) then
 					local targetFolderNumber = targetOrder[currentTargetIndex]
-					print('City Fireball Aimbot: TARGETING folder ' .. targetFolderNumber .. ' (Index: ' .. currentTargetIndex .. '/6)')
+					print('City Fireball Aimbot: TARGETING folder ' .. targetFolderNumber .. ' (Index: ' .. currentTargetIndex .. '/5)')
 					local enemies = workspace:FindFirstChild('Enemies')
 
 					if enemies then
@@ -1080,24 +1084,24 @@ local function CityAimbot(on)
 							-- ONLY advance if both pcall succeeded AND fireball was actually fired
 							if success and fireballFired then
 								if foundMob then
-									print('City Fireball Aimbot: SUCCESS - Fired at folder ' .. targetFolderNumber .. ' (' .. currentTargetIndex .. '/6) mob position ' .. tostring(targetPosition))
+									print('City Fireball Aimbot: SUCCESS - Fired at folder ' .. targetFolderNumber .. ' (' .. currentTargetIndex .. '/5) mob position ' .. tostring(targetPosition))
 								else
-									print('City Fireball Aimbot: SUCCESS - Fired at folder ' .. targetFolderNumber .. ' (' .. currentTargetIndex .. '/6) calculated position ' .. tostring(targetPosition))
+									print('City Fireball Aimbot: SUCCESS - Fired at folder ' .. targetFolderNumber .. ' (' .. currentTargetIndex .. '/5) calculated position ' .. tostring(targetPosition))
 								end
 								lastFireballTime = currentTime
 
 								-- ADVANCE TO NEXT TARGET ONLY AFTER SUCCESSFUL FIRE
 								targetAttempts[currentTargetIndex] = 0 -- Reset attempts for this target
 								currentTargetIndex = currentTargetIndex + 1
-								print('City Fireball Aimbot: ADVANCED to next target: ' .. currentTargetIndex .. '/6')
+								print('City Fireball Aimbot: ADVANCED to next target: ' .. currentTargetIndex .. '/5')
 
 								-- Reset to first target if completed cycle
 								if currentTargetIndex > #targetOrder then
 									currentTargetIndex = 1
-									print('City Fireball Aimbot: CYCLE COMPLETED - All 6 targets hit! Restarting...')
+									print('City Fireball Aimbot: CYCLE COMPLETED - All 5 targets hit! Restarting...')
 								end
 
-								-- Smart wait timing for 6-folder system
+								-- Smart wait timing for 5-folder system
 								task.wait(targetWaitTime)
 							else
 								-- FIREBALL DID NOT FIRE - DO NOT ADVANCE, RETRY SAME TARGET
