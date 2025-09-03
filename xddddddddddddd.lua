@@ -1012,9 +1012,10 @@ local function CityAimbot(on)
 
 				local currentTime = tick()
 
-				-- Check cooldown
-				if (currentTime - lastFireballTime) >= (cfg.cityFireballCooldown or 0.2) then
+				-- Check cooldown (reduced minimum to ensure smooth progression)
+				if (currentTime - lastFireballTime) >= (cfg.cityFireballCooldown or 0.1) then
 					local targetFolderNumber = targetOrder[currentTargetIndex]
+					print('City Fireball Aimbot: Targeting folder ' .. targetFolderNumber .. ' (Index: ' .. currentTargetIndex .. '/6)')
 					local enemies = workspace:FindFirstChild('Enemies')
 
 					if enemies then
@@ -1058,6 +1059,7 @@ local function CityAimbot(on)
 							if not foundMob then
 								targetPosition = fallbackPositions[targetFolderNumber] or Vector3.new(targetFolderNumber * 20, 5, targetFolderNumber * 10)
 								print('City Fireball Aimbot: No mobs in folder ' .. targetFolderNumber .. ', firing at strategic position ' .. tostring(targetPosition))
+								-- Even with no mobs, we still fire to maintain the cycle progression
 							end
 
 							-- Fire the fireball (always fire to maintain cycle)
@@ -1085,20 +1087,14 @@ local function CityAimbot(on)
 								-- Wait before next target
 								task.wait(0.3)
 							else
-								print('City Fireball Aimbot: Failed to fire at folder ' .. targetFolderNumber .. ', moving to next...')
-								currentTargetIndex = currentTargetIndex + 1
-								if currentTargetIndex > #targetOrder then
-									currentTargetIndex = 1
-								end
-								task.wait(0.1)
+								print('City Fireball Aimbot: Failed to fire at folder ' .. targetFolderNumber .. ', retrying same target...')
+								-- Don't advance to next target on failure, retry the same one
+								task.wait(0.2)
 							end
 						else
-							print('City Fireball Aimbot: Folder ' .. targetFolderNumber .. ' not found, moving to next...')
-							currentTargetIndex = currentTargetIndex + 1
-							if currentTargetIndex > #targetOrder then
-								currentTargetIndex = 1
-							end
-							task.wait(0.1)
+							print('City Fireball Aimbot: Folder ' .. targetFolderNumber .. ' not found, retrying same target...')
+							-- Don't advance to next target when folder is missing, retry the same one
+							task.wait(0.2)
 						end
 					else
 						print('City Fireball Aimbot: workspace.Enemies not found')
