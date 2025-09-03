@@ -1015,6 +1015,7 @@ local function CityAimbot(on)
 				-- Check cooldown
 				if (currentTime - lastFireballTime) >= (cfg.cityFireballCooldown or 0.2) then
 					local targetFolderNumber = targetOrder[currentTargetIndex]
+					print('City Fireball Aimbot: TARGETING folder ' .. targetFolderNumber .. ' (Index: ' .. currentTargetIndex .. '/6)')
 					local enemies = workspace:FindFirstChild('Enemies')
 
 					if enemies then
@@ -1060,32 +1061,36 @@ local function CityAimbot(on)
 								print('City Fireball Aimbot: No mobs in folder ' .. targetFolderNumber .. ', firing at strategic position ' .. tostring(targetPosition))
 							end
 
-							-- Fire the fireball (always fire to maintain cycle)
+							-- Fire the fireball and ONLY advance if it actually fires
+							local fireballFired = false
 							local success = pcall(function()
 								fireAt(targetPosition)
+								fireballFired = true -- Mark that fireball was actually fired
 							end)
 
-							if success then
+							-- ONLY advance if both pcall succeeded AND fireball was actually fired
+							if success and fireballFired then
 								if foundMob then
-									print('City Fireball Aimbot: Fired at folder ' .. targetFolderNumber .. ' (' .. currentTargetIndex .. '/6) mob position ' .. tostring(targetPosition))
+									print('City Fireball Aimbot: SUCCESS - Fired at folder ' .. targetFolderNumber .. ' (' .. currentTargetIndex .. '/6) mob position ' .. tostring(targetPosition))
 								else
-									print('City Fireball Aimbot: Fired at folder ' .. targetFolderNumber .. ' (' .. currentTargetIndex .. '/6) calculated position ' .. tostring(targetPosition))
+									print('City Fireball Aimbot: SUCCESS - Fired at folder ' .. targetFolderNumber .. ' (' .. currentTargetIndex .. '/6) calculated position ' .. tostring(targetPosition))
 								end
 								lastFireballTime = currentTime
 
-								-- Move to next target
+								-- ADVANCE TO NEXT TARGET ONLY AFTER SUCCESSFUL FIRE
 								currentTargetIndex = currentTargetIndex + 1
 
 								-- Reset to first target if completed cycle
 								if currentTargetIndex > #targetOrder then
 									currentTargetIndex = 1
-									print('City Fireball Aimbot: Completed cycle, restarting...')
+									print('City Fireball Aimbot: CYCLE COMPLETED - All 6 targets hit! Restarting...')
 								end
 
 								-- Wait before next target
 								task.wait(0.3)
 							else
-								print('City Fireball Aimbot: Failed to fire at folder ' .. targetFolderNumber .. ', retrying same target...')
+								-- FIREBALL DID NOT FIRE - DO NOT ADVANCE, RETRY SAME TARGET
+								print('City Fireball Aimbot: FAILED - Could not fire at folder ' .. targetFolderNumber .. ', retrying same target...')
 								-- Don't advance to next target on failure, retry the same one
 								task.wait(0.2)
 							end
