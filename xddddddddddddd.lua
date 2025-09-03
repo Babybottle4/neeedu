@@ -981,11 +981,10 @@ local function CityAimbot(on)
 	getgenv().FireBallAimbotCity=on;if not on then return end
 	
 	print('City Fireball Aimbot: Starting...')
-	-- STRICT target order: 5, 9, 8, 6, 3, 2 - NO SKIPPING ALLOWED
+	-- Simple target order: 5, 9, 8, 6, 3, 2
 	local targetOrder = { 5, 9, 8, 6, 3, 2 }
 	local currentTargetIndex = 1
 	local lastFireballTime = 0
-	local targetAttempts = 0 -- Track attempts per target
 	
 	-- Strategic fallback positions for empty folders (near typical city spawn areas)
 	local fallbackPositions = {
@@ -1014,95 +1013,94 @@ local function CityAimbot(on)
 				local currentTime = tick()
 
 				-- Check cooldown
-				if (currentTime - lastFireballTime) >= (cfg.cityFireballCooldown or 0.1) then
+				if (currentTime - lastFireballTime) >= (cfg.cityFireballCooldown or 0.2) then
 					local targetFolderNumber = targetOrder[currentTargetIndex]
-					print('City Fireball Aimbot: STRICT MODE - Targeting folder ' .. targetFolderNumber .. ' (Index: ' .. currentTargetIndex .. '/6) - Attempts: ' .. targetAttempts)
-					
 					local enemies = workspace:FindFirstChild('Enemies')
-					if not enemies then
-						print('City Fireball Aimbot: workspace.Enemies not found, retrying...')
-						task.wait(0.2)
-						goto continue
-					end
 
-					local targetFolder = enemies:FindFirstChild(tostring(targetFolderNumber))
-					if not targetFolder or not targetFolder:IsA('Folder') then
-						print('City Fireball Aimbot: Folder ' .. targetFolderNumber .. ' not found, retrying...')
-						targetAttempts = targetAttempts + 1
-						task.wait(0.2)
-						goto continue
-					end
+					if enemies then
+						local targetFolder = enemies:FindFirstChild(tostring(targetFolderNumber))
+						if targetFolder and targetFolder:IsA('Folder') then
+							local children = targetFolder:GetChildren()
+							print('City Fireball Aimbot: Checking folder ' .. targetFolderNumber .. ' with ' .. #children .. ' children')
+							
+							-- Get target position (use first mob or calculated folder position)
+							local targetPosition = nil
+							local foundMob = false
 
-					-- Get target position
-					local targetPosition = nil
-					local foundMob = false
-					local children = targetFolder:GetChildren()
-					
-					print('City Fireball Aimbot: Checking folder ' .. targetFolderNumber .. ' with ' .. #children .. ' children')
-					
-					for _, child in pairs(children) do
-						if child:IsA('Model') and child:FindFirstChild('HumanoidRootPart') then
-							local hrp = child:FindFirstChild('HumanoidRootPart')
-							if hrp and hrp.Position and hrp.Position ~= Vector3.new(0, 0, 0) then
-								targetPosition = hrp.Position
-								foundMob = true
-								print('City Fireball Aimbot: Found Model mob "' .. child.Name .. '" at ' .. tostring(targetPosition))
-								break
+							for _, child in pairs(children) do
+								print('City Fireball Aimbot: Checking child: ' .. child.Name .. ' (Type: ' .. child.ClassName .. ')')
+								if child:IsA('Model') and child:FindFirstChild('HumanoidRootPart') then
+									local hrp = child:FindFirstChild('HumanoidRootPart')
+									if hrp and hrp.Position then
+										targetPosition = hrp.Position
+										foundMob = true
+										print('City Fireball Aimbot: Found Model mob "' .. child.Name .. '" at ' .. tostring(targetPosition))
+										break
+									else
+										print('City Fireball Aimbot: Model "' .. child.Name .. '" has invalid HumanoidRootPart')
+									end
+								elseif child:IsA('BasePart') and child.Position then
+									-- Validate the position is not at origin or invalid
+									if child.Position ~= Vector3.new(0, 0, 0) then
+										targetPosition = child.Position
+										foundMob = true
+										print('City Fireball Aimbot: Found BasePart mob "' .. child.Name .. '" at ' .. tostring(targetPosition))
+										break
+									else
+										print('City Fireball Aimbot: BasePart "' .. child.Name .. '" has invalid position (0,0,0)')
+									end
+								else
+									print('City Fireball Aimbot: Skipping child "' .. child.Name .. '" (not a valid mob type)')
+								end
 							end
-						elseif child:IsA('BasePart') and child.Position and child.Position ~= Vector3.new(0, 0, 0) then
-							targetPosition = child.Position
-							foundMob = true
-							print('City Fireball Aimbot: Found BasePart mob "' .. child.Name .. '" at ' .. tostring(targetPosition))
-							break
-						end
-					end
 
-					-- Use fallback position if no mob found
-					if not foundMob then
-						targetPosition = fallbackPositions[targetFolderNumber] or Vector3.new(targetFolderNumber * 20, 5, targetFolderNumber * 10)
-						print('City Fireball Aimbot: No mobs in folder ' .. targetFolderNumber .. ', using fallback position ' .. tostring(targetPosition))
-					end
+							-- If no mob found, use strategic fallback position to maintain cycle
+							if not foundMob then
+								targetPosition = fallbackPositions[targetFolderNumber] or Vector3.new(targetFolderNumber * 20, 5, targetFolderNumber * 10)
+								print('City Fireball Aimbot: No mobs in folder ' .. targetFolderNumber .. ', firing at strategic position ' .. tostring(targetPosition))
+							end
 
-					-- CRITICAL: Fire the fireball and ONLY advance if successful
-					local fireballSuccess = false
-					local success = pcall(function()
-						fireAt(targetPosition)
-						fireballSuccess = true -- Mark as successful
-					end)
+							-- Fire the fireball (always fire to maintain cycle)
+							local success = pcall(function()
+								fireAt(targetPosition)
+							end)
 
-					if success and fireballSuccess then
-						-- FIREBALL WAS FIRED SUCCESSFULLY - NOW ADVANCE
-						if foundMob then
-							print('City Fireball Aimbot: SUCCESS - Fired at folder ' .. targetFolderNumber .. ' (' .. currentTargetIndex .. '/6) mob position ' .. tostring(targetPosition))
+							if success then
+								if foundMob then
+									print('City Fireball Aimbot: Fired at folder ' .. targetFolderNumber .. ' (' .. currentTargetIndex .. '/6) mob position ' .. tostring(targetPosition))
+								else
+									print('City Fireball Aimbot: Fired at folder ' .. targetFolderNumber .. ' (' .. currentTargetIndex .. '/6) calculated position ' .. tostring(targetPosition))
+								end
+								lastFireballTime = currentTime
+
+								-- Move to next target
+								currentTargetIndex = currentTargetIndex + 1
+
+								-- Reset to first target if completed cycle
+								if currentTargetIndex > #targetOrder then
+									currentTargetIndex = 1
+									print('City Fireball Aimbot: Completed cycle, restarting...')
+								end
+
+								-- Wait before next target
+								task.wait(0.3)
+							else
+								print('City Fireball Aimbot: Failed to fire at folder ' .. targetFolderNumber .. ', retrying same target...')
+								-- Don't advance to next target on failure, retry the same one
+								task.wait(0.2)
+							end
 						else
-							print('City Fireball Aimbot: SUCCESS - Fired at folder ' .. targetFolderNumber .. ' (' .. currentTargetIndex .. '/6) fallback position ' .. tostring(targetPosition))
+							print('City Fireball Aimbot: Folder ' .. targetFolderNumber .. ' not found, retrying same target...')
+							-- Don't advance to next target when folder is missing, retry the same one
+							task.wait(0.2)
 						end
-						
-						lastFireballTime = currentTime
-						targetAttempts = 0 -- Reset attempts for next target
-						
-						-- ADVANCE TO NEXT TARGET ONLY AFTER SUCCESSFUL FIRE
-						currentTargetIndex = currentTargetIndex + 1
-						
-						-- Reset to first target if completed cycle
-						if currentTargetIndex > #targetOrder then
-							currentTargetIndex = 1
-							print('City Fireball Aimbot: CYCLE COMPLETED - All 6 targets hit successfully! Restarting...')
-						end
-						
-						-- Wait before next target
-						task.wait(0.3)
 					else
-						-- FIREBALL FAILED - DO NOT ADVANCE, RETRY SAME TARGET
-						print('City Fireball Aimbot: FAILED - Could not fire at folder ' .. targetFolderNumber .. ', retrying same target...')
-						targetAttempts = targetAttempts + 1
-						task.wait(0.2)
+						print('City Fireball Aimbot: workspace.Enemies not found')
+						task.wait(0.5)
 					end
 				else
 					task.wait(0.05)
 				end
-				
-				::continue::
 			else
 				task.wait(0.1)
 			end
