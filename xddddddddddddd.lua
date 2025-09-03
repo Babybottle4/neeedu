@@ -981,10 +981,16 @@ local function CityAimbot(on)
 	getgenv().FireBallAimbotCity=on;if not on then return end
 	
 	print('City Fireball Aimbot: Starting...')
-	-- Simple target order: 5, 9, 8, 6, 3, 2
+	-- Smart 6-folder system: 5, 9, 8, 6, 3, 2
 	local targetOrder = { 5, 9, 8, 6, 3, 2 }
 	local currentTargetIndex = 1
 	local lastFireballTime = 0
+	local targetAttempts = {} -- Track attempts per target
+	
+	-- Initialize attempt counters for each target
+	for i = 1, #targetOrder do
+		targetAttempts[i] = 0
+	end
 	
 	-- Strategic fallback positions for empty folders (near typical city spawn areas)
 	local fallbackPositions = {
@@ -995,6 +1001,9 @@ local function CityAimbot(on)
 		[3] = Vector3.new(80, 20, 60),    -- City area 3
 		[2] = Vector3.new(60, 25, 40),    -- City area 2
 	}
+	
+	-- Smart timing system for 6-folder optimization
+	local targetWaitTime = 0.15  -- Optimized for 6-folder system
 
 	task.spawn(function()
 		while getgenv().FireBallAimbotCity do
@@ -1078,7 +1087,9 @@ local function CityAimbot(on)
 								lastFireballTime = currentTime
 
 								-- ADVANCE TO NEXT TARGET ONLY AFTER SUCCESSFUL FIRE
+								targetAttempts[currentTargetIndex] = 0 -- Reset attempts for this target
 								currentTargetIndex = currentTargetIndex + 1
+								print('City Fireball Aimbot: ADVANCED to next target: ' .. currentTargetIndex .. '/6')
 
 								-- Reset to first target if completed cycle
 								if currentTargetIndex > #targetOrder then
@@ -1086,11 +1097,12 @@ local function CityAimbot(on)
 									print('City Fireball Aimbot: CYCLE COMPLETED - All 6 targets hit! Restarting...')
 								end
 
-								-- Wait before next target
-								task.wait(0.3)
+								-- Smart wait timing for 6-folder system
+								task.wait(targetWaitTime)
 							else
 								-- FIREBALL DID NOT FIRE - DO NOT ADVANCE, RETRY SAME TARGET
-								print('City Fireball Aimbot: FAILED - Could not fire at folder ' .. targetFolderNumber .. ', retrying same target...')
+								targetAttempts[currentTargetIndex] = targetAttempts[currentTargetIndex] + 1
+								print('City Fireball Aimbot: FAILED - Could not fire at folder ' .. targetFolderNumber .. ', retrying same target... (Attempts: ' .. targetAttempts[currentTargetIndex] .. ')')
 								-- Don't advance to next target on failure, retry the same one
 								task.wait(0.2)
 							end
