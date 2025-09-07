@@ -90,8 +90,8 @@ task.spawn(function()
 		local exoticStore2 = workspace.Pads.ExoticStore2["1"]
 
 		-- Target positions
-		local pos1 = Vector3.new(-167.33985900878906, 75.6653060913086, 156.6094207763672) -- ExoticStore
-		local pos2 = Vector3.new(-180.12326049804688, 75.6653060913086, 134.66819763183594) -- ExoticStore2
+		local pos1 = Vector3.new(247.56602478027344, 30017.4453125, -1489.92529296875) -- ExoticStore
+		local pos2 = Vector3.new(254.81280517578125, 30017.4453125, -1514.7242431640625) -- ExoticStore2
 
 		-- Move them by setting their CFrame
 		exoticStore.CFrame = CFrame.new(pos1)
