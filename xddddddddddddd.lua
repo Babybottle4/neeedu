@@ -165,7 +165,7 @@ task.spawn(function()
 	while true do
 		if getgenv().SmartPanic then
 			local c,h=charHum();if h then local m=(h.MaxHealth and h.MaxHealth>0)and h.MaxHealth or 100;local now=os.clock()
-				if armed and h.Health>0 and h.Health<=0.90*m and(now-last)>=1.5 then local cf=panicCF();if cf and LP.Character then pcall(function()LP.Character:PivotTo(cf)end)end last=now;armed=false
+				if armed and h.Health>0 and h.Health<=0.90*m and(now-last)>=1.5 then local cf=panicCF();if cf and LP.Character then pcall(function()LP.Character:PivotTo(cf)end)end last=now;armed=false;disableAimbots()
 				elseif not armed and h.Health>=REARM*m then armed=true end
 			end
 		end
