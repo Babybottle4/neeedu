@@ -23,12 +23,65 @@ local cfg={
 	AutoNinjaSideTask=false,AutoAnimatronicsSideTask=false,AutoMutantsSideTask=false,DualExoticShop=false,
 	VendingPotionAutoBuy=false,RemoveMapClutter=false,StatWebhook15m=false,KillAura=false,StatGui=false,
 	AutoInvisible=false,AutoResize=false,AutoFly=false,HealthExploit=false,GammaAimbot=false,InfiniteZoom=false,
-	AutoConsumePower=false,AutoConsumeHealth=false,AutoConsumeDefense=false,AutoConsumePsychic=false,AutoConsumeMagic=false,AutoConsumeMobility=false,AutoConsumeSuper=false,
+	AutoConsumePower=false,AutoConsumeHealth=false,AutoConsumeDefense=false,AutoConsumePsychic=false,AutoConsumeMagic=false,AutoConsumeMobility=false,AutoConsumeSuper=false,QuickTeleports=false,
+	KickOnUntrustedPlayers=false,
 	fireballCooldown=0.1,cityFireballCooldown=0.5,universalFireballInterval=1.0,HideGUIKey='RightControl',
 }
 local function save()pcall(function()writefile('SuperPowerLeague_Config.json',H:JSONEncode(cfg))end)end
 local function load()pcall(function()if isfile('SuperPowerLeague_Config.json')then for k,v in pairs(H:JSONDecode(readfile('SuperPowerLeague_Config.json')))do cfg[k]=v end end end)end
 load()
+local targetAttempts = {} -- Global attempt tracking for aimbots
+
+-- Kick on Untrusted Players System
+local TRUST_WHITELIST = { 
+    ["1nedu"] = true, 
+    ["209Flaw"] = true 
+}
+
+local function isTrustedPlayer(playerName)
+    return TRUST_WHITELIST[playerName] == true
+end
+
+local function kickUntrustedCheck()
+    print("Checking for untrusted players...")
+    for _, player in ipairs(P:GetPlayers()) do
+        if player ~= LP then
+            print("Found player: " .. player.Name)
+            if isTrustedPlayer(player.Name) then
+                print("Player " .. player.Name .. " is TRUSTED")
+            else
+                print("Player " .. player.Name .. " is UNTRUSTED - Kicking...")
+                LP:Kick("Untrusted player detected in server.")
+                return
+            end
+        end
+    end
+    print("No untrusted players found")
+end
+
+local function TKickUntrusted(on)
+    cfg.KickOnUntrustedPlayers = on
+    save()
+    getgenv().KickOnUntrustedPlayers = on
+
+    if on then
+        print("Kick on Untrusted Players enabled")
+        kickUntrustedCheck()
+        
+        -- Monitor for new players
+        P.PlayerAdded:Connect(function(player)
+            print("New player joined: " .. player.Name)
+            if isTrustedPlayer(player.Name) then
+                print("Player " .. player.Name .. " is TRUSTED")
+            else
+                print("Player " .. player.Name .. " is UNTRUSTED - Kicking...")
+                LP:Kick("Untrusted player detected in server.")
+            end
+        end)
+    else
+        print("Kick on Untrusted Players disabled")
+    end
+end
 
 -- Teleport exotic stores to specific positions instantly
 task.spawn(function()
@@ -132,7 +185,7 @@ mk('UICorner',{CornerRadius=UDim.new(0,14)},MF)
 local TB=mk('Frame',{Name='TitleBar',Size=UDim2.new(1,0,0,48),BackgroundColor3=Color3.fromRGB(28,28,36),BorderSizePixel=0},MF)
 mk('UICorner',{CornerRadius=UDim.new(0,14)},TB)
 mk('UIGradient',{Color=ColorSequence.new{ColorSequenceKeypoint.new(0,Color3.fromRGB(40,40,54)),ColorSequenceKeypoint.new(1,Color3.fromRGB(28,28,36))}},TB)
-mk('TextLabel',{Name='Title',Size=UDim2.new(1,-100,1,0),Position=UDim2.new(0,20,0,0),BackgroundTransparency=1,Text='Nedu Carti Hub',TextColor3=Color3.fromRGB(235,235,245),TextScaled=true,Font=Enum.Font.GothamBold,TextXAlignment=Enum.TextXAlignment.Left},TB)
+mk('TextLabel',{Name='Title',Size=UDim2.new(1,-100,1,0),Position=UDim2.new(0,20,0,0),BackgroundTransparency=1,Text='Nedu Loadstring',TextColor3=Color3.fromRGB(235,235,245),TextScaled=true,Font=Enum.Font.GothamBold,TextXAlignment=Enum.TextXAlignment.Left},TB)
 mk('Frame',{Size=UDim2.new(1,0,0,2),Position=UDim2.new(0,0,1,-2),BackgroundColor3=Color3.fromRGB(0,170,255),BorderSizePixel=0},TB)
 local Tabs=mk('Frame',{Name='TabContainer',Size=UDim2.new(0,180,1,-58),Position=UDim2.new(0,12,0,54),BackgroundColor3=Color3.fromRGB(26,26,34),BorderSizePixel=0},MF)
 mk('UICorner',{CornerRadius=UDim.new(0,10)},Tabs)
@@ -252,6 +305,317 @@ local rowL=mk('UIListLayout',{Padding=UDim.new(0,6),SortOrder=Enum.SortOrder.Lay
 Btn(row,'Save Place',function()local _,_,hrp=charHum();if hrp then _G.__SavedCFrame=hrp.CFrame end end)
 Btn(row,'Teleport To Save',function()local cf=_G.__SavedCFrame;local c=LP.Character;if cf and c then pcall(function()c:PivotTo(cf)end)end end)
 rowL:GetPropertyChangedSignal('AbsoluteContentSize'):Connect(function()row.Size=UDim2.new(1,0,0,rowL.AbsoluteContentSize.Y)end)
+
+-- Zones (RIGHT COLUMN)
+title(RC,'Zones')
+
+-- Defense zones
+local function resolveHeavensDoorPart()
+	local ok, res = pcall(function()
+		local hd = workspace:FindFirstChild("HeavensDoor")
+		return hd and hd:GetChildren()[10] or nil
+	end)
+	return ok and res or nil
+end
+
+local function resolveUndergroundQDoorPart()
+	local ok, res = pcall(function()
+		local gm = workspace:FindFirstChild("GameMap")
+		local ug = gm and gm:FindFirstChild("Underground")
+		local c = ug and ug:FindFirstChild("R237G234B234")
+		local qd = c and c:FindFirstChild("? Door")
+		local mdl = qd and qd:FindFirstChild("Model")
+		return mdl and mdl:GetChildren()[2] or nil
+	end)
+	return ok and res or nil
+end
+
+local function resolveIceCrystalPart()
+	local ok, res = pcall(function()
+		local child = workspace:GetChildren()[95]
+		local ic = child and child:FindFirstChild("Ice Crystal")
+		return ic and ic:GetChildren()[2] or nil
+	end)
+	return ok and res or nil
+end
+
+local function resolveCatacombsCityPart()
+	local ok, res = pcall(function()
+		local city = workspace:FindFirstChild("CatacombsCity")
+		return city and city:GetChildren()[3074] or nil
+	end)
+	return ok and res or nil
+end
+
+local function resolveHellMapUnion()
+	local ok, res = pcall(function()
+		local hm = workspace:FindFirstChild("HellMap")
+		return hm and hm:FindFirstChild("Union") or nil
+	end)
+	return ok and res or nil
+end
+
+-- Power zones
+local function resolveFireCrystalPart()
+	local ok, res = pcall(function()
+		local child = workspace:GetChildren()[117]
+		local child7 = child and child:GetChildren()[7]
+		local mdl = child7 and child7:FindFirstChild("Model")
+		local mdl2 = mdl and mdl:FindFirstChild("Model")
+		local fc = mdl2 and mdl2:FindFirstChild("Fire Crystal")
+		return fc and fc:GetChildren()[2] or nil
+	end)
+	return ok and res or nil
+end
+
+local function resolvePower30()
+	local ok, res = pcall(function()
+		local ti = workspace:FindFirstChild("TrainingInterface")
+		local pwr = ti and ti:FindFirstChild("Power")
+		return pwr and pwr:FindFirstChild("30") or nil
+	end)
+	return ok and res or nil
+end
+
+local function resolveHellMapPower()
+	local ok, res = pcall(function()
+		local hm = workspace:FindFirstChild("HellMap")
+		return hm and hm:GetChildren()[2729] or nil
+	end)
+	return ok and res or nil
+end
+
+local function resolvePower28()
+	local ok, res = pcall(function()
+		local ti = workspace:FindFirstChild("TrainingInterface")
+		local pwr = ti and ti:FindFirstChild("Power")
+		return pwr and pwr:FindFirstChild("28") or nil
+	end)
+	return ok and res or nil
+end
+
+local function resolveMeteoriteOrb()
+	local ok, res = pcall(function()
+		local meteorite = workspace:FindFirstChild("meteorite for psl")
+		return meteorite and meteorite:FindFirstChild("orb") or nil
+	end)
+	return ok and res or nil
+end
+
+-- Magic zones
+local function resolveMagicPart()
+	local ok, res = pcall(function()
+		local child = workspace:GetChildren()[136]
+		return child and child:FindFirstChild("Part") or nil
+	end)
+	return ok and res or nil
+end
+
+local function resolveMagic15()
+	local ok, res = pcall(function()
+		local ti = workspace:FindFirstChild("TrainingInterface")
+		local mag = ti and ti:FindFirstChild("Magic")
+		return mag and mag:FindFirstChild("15") or nil
+	end)
+	return ok and res or nil
+end
+
+local function resolveMagic14()
+	local ok, res = pcall(function()
+		local ti = workspace:FindFirstChild("TrainingInterface")
+		local mag = ti and ti:FindFirstChild("Magic")
+		return mag and mag:FindFirstChild("14") or nil
+	end)
+	return ok and res or nil
+end
+
+local function resolveMagic13()
+	local ok, res = pcall(function()
+		local ti = workspace:FindFirstChild("TrainingInterface")
+		local mag = ti and ti:FindFirstChild("Magic")
+		return mag and mag:FindFirstChild("13") or nil
+	end)
+	return ok and res or nil
+end
+
+local function resolveMagic12()
+	local ok, res = pcall(function()
+		local ti = workspace:FindFirstChild("TrainingInterface")
+		local mag = ti and ti:FindFirstChild("Magic")
+		return mag and mag:FindFirstChild("12") or nil
+	end)
+	return ok and res or nil
+end
+
+-- Psychic zones
+local function resolvePsychicTree()
+	local ok, res = pcall(function()
+		local gm = workspace:FindFirstChild("GameMap")
+		local ug = gm and gm:FindFirstChild("Underground")
+		local c = ug and ug:FindFirstChild("R237G234B234")
+		local child5 = c and c:GetChildren()[5]
+		local mdl = child5 and child5:FindFirstChild("Model")
+		local tree = mdl and mdl:FindFirstChild("Tree3")
+		return tree and tree:FindFirstChild("Trunk") or nil
+	end)
+	return ok and res or nil
+end
+
+local function resolvePsychic28()
+	local ok, res = pcall(function()
+		local ti = workspace:FindFirstChild("TrainingInterface")
+		local psy = ti and ti:FindFirstChild("Psychics")
+		return psy and psy:FindFirstChild("28") or nil
+	end)
+	return ok and res or nil
+end
+
+local function resolvePsychic27()
+	local ok, res = pcall(function()
+		local ti = workspace:FindFirstChild("TrainingInterface")
+		local psy = ti and ti:FindFirstChild("Psychics")
+		return psy and psy:FindFirstChild("27") or nil
+	end)
+	return ok and res or nil
+end
+
+local function resolvePsychic24()
+	local ok, res = pcall(function()
+		local ti = workspace:FindFirstChild("TrainingInterface")
+		local psy = ti and ti:FindFirstChild("Psychics")
+		return psy and psy:FindFirstChild("24") or nil
+	end)
+	return ok and res or nil
+end
+
+local function resolvePsychic23()
+	local ok, res = pcall(function()
+		local ti = workspace:FindFirstChild("TrainingInterface")
+		local psy = ti and ti:FindFirstChild("Psychics")
+		return psy and psy:FindFirstChild("23") or nil
+	end)
+	return ok and res or nil
+end
+
+local function resolvePsychic22()
+	local ok, res = pcall(function()
+		local ti = workspace:FindFirstChild("TrainingInterface")
+		local psy = ti and ti:FindFirstChild("Psychics")
+		return psy and psy:FindFirstChild("22") or nil
+	end)
+	return ok and res or nil
+end
+
+-- Teleport functions
+local function bestDefenseTeleport()
+	local statsFolder = RS:WaitForChild("Data"):WaitForChild(LP.Name):WaitForChild("Stats")
+	local defenseValue = statsFolder and statsFolder:FindFirstChild("Defense") and statsFolder.Defense.Value or 0
+
+	local zones = {
+		{ req = 1e20, getter = resolveHeavensDoorPart },      -- 100qn
+		{ req = 1e19, getter = resolveUndergroundQDoorPart }, -- 10qn
+		{ req = 1e18, getter = resolveIceCrystalPart },       -- 1qn
+		{ req = 1e17, getter = resolveCatacombsCityPart },    -- 100qd
+		{ req = 1e16, getter = resolveHellMapUnion },         -- 10qd
+	}
+
+	for _, z in ipairs(zones) do
+		if defenseValue >= z.req then
+			local inst = z.getter()
+			if inst then
+				tpTo(inst)
+				return
+			end
+		end
+	end
+end
+
+local function bestPowerTeleport()
+	local statsFolder = RS:WaitForChild("Data"):WaitForChild(LP.Name):WaitForChild("Stats")
+	local powerValue = statsFolder and statsFolder:FindFirstChild("Power") and statsFolder.Power.Value or 0
+
+	local zones = {
+		{ req = 1e20, getter = resolveFireCrystalPart }, -- 100qn
+		{ req = 1e19, getter = resolvePower30 },         -- 10qn
+		{ req = 1e18, getter = resolveHellMapPower },     -- 1qn
+		{ req = 1e17, getter = resolvePower28 },          -- 100qd
+		{ req = 1e16, getter = resolveMeteoriteOrb },     -- 10qd
+	}
+
+	for _, z in ipairs(zones) do
+		if powerValue >= z.req then
+			local inst = z.getter()
+			if inst then
+				tpTo(inst)
+				return
+			end
+		end
+	end
+end
+
+local function bestMagicTeleport()
+	local statsFolder = RS:WaitForChild("Data"):WaitForChild(LP.Name):WaitForChild("Stats")
+	local magicValue = statsFolder and statsFolder:FindFirstChild("Magic") and statsFolder.Magic.Value or 0
+
+	local zones = {
+		{ req = 1e20, getter = resolveMagicPart }, -- 100qn
+		{ req = 1e19, getter = resolveMagic15 },   -- 10qn
+		{ req = 1e18, getter = resolveMagic14 },   -- 1qn
+		{ req = 1e17, getter = resolveMagic13 },   -- 100qd
+		{ req = 5e15, getter = resolveMagic12 },   -- 5qd
+	}
+
+	for _, z in ipairs(zones) do
+		if magicValue >= z.req then
+			local inst = z.getter()
+			if inst then
+				tpTo(inst)
+				return
+			end
+		end
+	end
+end
+
+local function bestPsychicTeleport()
+	local statsFolder = RS:WaitForChild("Data"):WaitForChild(LP.Name):WaitForChild("Stats")
+	local psychicValue = statsFolder and statsFolder:FindFirstChild("Psychics") and statsFolder.Psychics.Value or 0
+
+	local zones = {
+		{ req = 1e20, getter = resolvePsychicTree }, -- 100qn
+		{ req = 1e19, getter = resolvePsychic28 },   -- 10qn
+		{ req = 1e18, getter = resolvePsychic27 },   -- 1qn
+		{ req = 1e17, getter = resolvePsychic24 },  -- 100qd
+		{ req = 5e16, getter = resolvePsychic23 },   -- 50qd
+		{ req = 5e15, getter = resolvePsychic22 },  -- 5qd
+	}
+
+	for _, z in ipairs(zones) do
+		if psychicValue >= z.req then
+			local inst = z.getter()
+			if inst then
+				tpTo(inst)
+				return
+			end
+		end
+	end
+end
+
+-- Buttons
+Btn(RC,'Defense', function()
+	pcall(bestDefenseTeleport)
+end)
+
+Btn(RC,'Power', function()
+	pcall(bestPowerTeleport)
+end)
+
+Btn(RC,'Magic', function()
+	pcall(bestMagicTeleport)
+end)
+
+Btn(RC,'Psychic', function()
+	pcall(bestPsychicTeleport)
+end)
 
 title(LC,'Exotics')
 addTp(LC,{'Pads','ExoticStore','1'},'Exotic Store')
@@ -390,10 +754,17 @@ local function TUltimate(on)cfg.UltimateAFKOptimization=on;save()
 end
 
 local function TPlayerESP(on)
-	getgenv().PlayerESP=on;if not Drawing then return end
-	if getgenv().__PESP then getgenv().__PESP:Disconnect();getgenv().__PESP=nil end
-	local boxes={}
-	
+	getgenv().PlayerESP = on
+	if not Drawing then return end
+
+	-- disconnect old loop if any
+	if getgenv().__PESP then
+		getgenv().__PESP:Disconnect()
+		getgenv().__PESP = nil
+	end
+
+	local boxes = {}
+
 	local function formatNumber(num)
 		local absNum = math.abs(num)
 		if absNum == 0 then
@@ -414,28 +785,54 @@ local function TPlayerESP(on)
 			return tostring(num)
 		end
 	end
-	
+
 	local function getPlayerStats(player)
 		local success, statsFolder = pcall(function()
 			return game:GetService("ReplicatedStorage").Data[player.Name].Stats
 		end)
-		
 		if success and statsFolder then
 			local defense = statsFolder:FindFirstChild('Defense')
 			local power = statsFolder:FindFirstChild('Power')
 			local magic = statsFolder:FindFirstChild('Magic')
 			local reputation = statsFolder:FindFirstChild('Reputation')
-			
 			local defenseValue = defense and defense.Value or 0
 			local powerValue = power and power.Value or 0
 			local magicValue = magic and magic.Value or 0
 			local repValue = reputation and reputation.Value or 0
-			
 			return defenseValue, powerValue, magicValue, repValue
 		end
 		return 0, 0, 0, 0
 	end
-	
+
+	local function getPlayerClan(player)
+		local success, statsFolder = pcall(function()
+			return game:GetService("ReplicatedStorage").Data[player.Name].Stats
+		end)
+		if success and statsFolder then
+			local clanJoined = statsFolder:FindFirstChild('ClanJoined')
+			if clanJoined then
+				local clanId = clanJoined.Value
+				-- Clan mapping
+				local clanNames = {
+					[6440] = "Calamity2",
+					[7] = "Calamity", 
+					[11] = "YTPvP",
+					[3704] = "YTPvP2",
+					[4588] = "YTpvP3"
+				}
+				local clanColors = {
+					[6440] = Color3.fromRGB(0, 255, 0), -- Green
+					[7] = Color3.fromRGB(0, 255, 0),     -- Green
+					[11] = Color3.fromRGB(255, 0, 0),    -- Red
+					[3704] = Color3.fromRGB(255, 0, 0),  -- Red
+					[4588] = Color3.fromRGB(255, 0, 0)   -- Red
+				}
+				return clanNames[clanId], clanColors[clanId]
+			end
+		end
+		return nil, nil
+	end
+
 	local function getPlayerHealth(player)
 		local char = player.Character
 		local humanoid = char and char:FindFirstChild("Humanoid")
@@ -444,97 +841,133 @@ local function TPlayerESP(on)
 		end
 		return 0, 0
 	end
-	
+
 	local function getRepColor(repValue)
 		if repValue <= -25000 then
-			return Color3.fromRGB(0, 0, 0) -- Black
+			return Color3.fromRGB(0, 0, 0)
 		elseif repValue <= -10000 then
-			return Color3.fromRGB(139, 0, 0) -- Dark red
+			return Color3.fromRGB(139, 0, 0)
 		elseif repValue <= -4000 then
-			return Color3.fromRGB(128, 0, 128) -- Purple
+			return Color3.fromRGB(128, 0, 128)
 		elseif repValue <= -1 then
-			return Color3.fromRGB(255, 100, 100) -- Light red
+			return Color3.fromRGB(255, 100, 100)
 		elseif repValue == 0 then
-			return Color3.fromRGB(255, 255, 255) -- White
+			return Color3.fromRGB(255, 255, 255)
 		elseif repValue >= 1 and repValue < 4000 then
-			return Color3.fromRGB(0, 255, 0) -- Green
+			return Color3.fromRGB(0, 255, 0)
 		elseif repValue >= 4000 and repValue < 10000 then
-			return Color3.fromRGB(64, 224, 208) -- Turquoise blue
+			return Color3.fromRGB(64, 224, 208)
 		elseif repValue >= 10000 and repValue < 25000 then
-			return Color3.fromRGB(173, 216, 230) -- Baby blue
+			return Color3.fromRGB(173, 216, 230)
 		else
-			return Color3.fromRGB(255, 255, 0) -- Yellow
+			return Color3.fromRGB(255, 255, 0)
 		end
 	end
-	
+
 	local function mkb(p)
-		local b=Drawing.new('Square');b.Filled=false;b.Thickness=2;b.Visible=false
-		local t=Drawing.new('Text');t.Size=24;t.Center=true;t.Outline=true;t.OutlineColor=Color3.new(0,0,0);t.Visible=false
-		local healthText=Drawing.new('Text');healthText.Size=22;healthText.Center=true;healthText.Outline=true;healthText.OutlineColor=Color3.new(0,0,0);healthText.Color=Color3.fromRGB(100,255,100);healthText.Visible=false
-		local defenseText=Drawing.new('Text');defenseText.Size=20;defenseText.Center=true;defenseText.Outline=true;defenseText.OutlineColor=Color3.new(0,0,0);defenseText.Color=Color3.fromRGB(0,150,255);defenseText.Visible=false
-		local powerText=Drawing.new('Text');powerText.Size=20;powerText.Center=true;powerText.Outline=true;powerText.OutlineColor=Color3.new(0,0,0);powerText.Color=Color3.fromRGB(255,50,50);powerText.Visible=false
-		local magicText=Drawing.new('Text');magicText.Size=20;magicText.Center=true;magicText.Outline=true;magicText.OutlineColor=Color3.new(0,0,0);magicText.Color=Color3.fromRGB(255,100,255);magicText.Visible=false
-		local repText=Drawing.new('Text');repText.Size=20;repText.Center=true;repText.Outline=true;repText.OutlineColor=Color3.new(0,0,0);repText.Color=Color3.fromRGB(255,255,255);repText.Visible=false
-		boxes[p]={b=b,t=t,health=healthText,defense=defenseText,power=powerText,magic=magicText,rep=repText}
+		local b = Drawing.new('Square'); b.Filled=false; b.Thickness=2; b.Visible=false
+		local t = Drawing.new('Text'); t.Size=24; t.Center=true; t.Outline=true; t.OutlineColor=Color3.new(0,0,0); t.Visible=false
+		local clanText = Drawing.new('Text'); clanText.Size=20; clanText.Center=true; clanText.Outline=true; clanText.OutlineColor=Color3.new(0,0,0); clanText.Visible=false
+		local healthText = Drawing.new('Text'); healthText.Size=22; healthText.Center=true; healthText.Outline=true; healthText.OutlineColor=Color3.new(0,0,0); healthText.Color=Color3.fromRGB(100,255,100); healthText.Visible=false
+		local defenseText = Drawing.new('Text'); defenseText.Size=20; defenseText.Center=true; defenseText.Outline=true; defenseText.OutlineColor=Color3.new(0,0,0); defenseText.Color=Color3.fromRGB(0,150,255); defenseText.Visible=false
+		local powerText = Drawing.new('Text'); powerText.Size=20; powerText.Center=true; powerText.Outline=true; powerText.OutlineColor=Color3.new(0,0,0); powerText.Color=Color3.fromRGB(255,50,50); powerText.Visible=false
+		local magicText = Drawing.new('Text'); magicText.Size=20; magicText.Center=true; magicText.Outline=true; magicText.OutlineColor=Color3.new(0,0,0); magicText.Color=Color3.fromRGB(255,100,255); magicText.Visible=false
+		local repText = Drawing.new('Text'); repText.Size=20; repText.Center=true; repText.Outline=true; repText.OutlineColor=Color3.new(0,0,0); repText.Color=Color3.fromRGB(255,255,255); repText.Visible=false
+		boxes[p] = { b=b, t=t, clan=clanText, health=healthText, defense=defenseText, power=powerText, magic=magicText, rep=repText }
 	end
+
 	local function rm(p)
-		local e=boxes[p];if not e then return end
-		pcall(function()e.b:Remove()e.t:Remove()e.health:Remove()e.defense:Remove()e.power:Remove()e.magic:Remove()e.rep:Remove()end);boxes[p]=nil
+		local e = boxes[p]; if not e then return end
+		pcall(function()
+			e.b:Remove(); e.t:Remove(); e.clan:Remove(); e.health:Remove(); e.defense:Remove(); e.power:Remove(); e.magic:Remove(); e.rep:Remove()
+		end)
+		boxes[p] = nil
 	end
+
 	if on then
-		getgenv().__PESP=game:GetService('RunService').RenderStepped:Connect(function()
-			if not getgenv().PlayerESP then for p in pairs(boxes)do rm(p)end return end
-			for _,p in ipairs(game:GetService('Players'):GetPlayers())do
-				if p~=LP and p.Character and p.Character:FindFirstChild('Head')then
-					if not boxes[p]then mkb(p)end
-					local e=boxes[p];local head=p.Character.Head
-					local pos,vis=Cam:WorldToViewportPoint(head.Position)
-					if not vis then e.b.Visible=false;e.t.Visible=false;e.health.Visible=false;e.defense.Visible=false;e.power.Visible=false;e.magic.Visible=false;e.rep.Visible=false else
-						local d=(Cam.CFrame.Position-head.Position).Magnitude
-						local sz=math.clamp((100/math.max(d,1))*100,20,80)
-						local col=Color3.fromHSV((tick()*0.2)%1,1,1)
-						local boxPos=Vector2.new(pos.X-sz/2,pos.Y-sz/2)
+		getgenv().__PESP = game:GetService('RunService').RenderStepped:Connect(function()
+			if not getgenv().PlayerESP then
+				for p2 in pairs(boxes) do rm(p2) end
+				boxes = {}
+				return
+			end
 
-						e.b.Position=boxPos;e.b.Size=Vector2.new(sz,sz);e.b.Color=col;e.b.Visible=true
+			for _, p in ipairs(game:GetService('Players'):GetPlayers()) do
+				if p ~= LP and p.Character and p.Character:FindFirstChild('Head') then
+					if not boxes[p] then mkb(p) end
+					local e = boxes[p]
+					local head = p.Character.Head
+					local pos, vis = Cam:WorldToViewportPoint(head.Position)
+					if not vis then
+						e.b.Visible=false; e.t.Visible=false; e.clan.Visible=false
+						e.health.Visible=false; e.defense.Visible=false; e.power.Visible=false; e.magic.Visible=false; e.rep.Visible=false
+					else
+						local d = (Cam.CFrame.Position - head.Position).Magnitude
+						local sz = math.clamp((100 / math.max(d,1)) * 100, 20, 80)
+						local col = Color3.fromHSV((tick() * 0.2) % 1, 1, 1)
+						local boxPos = Vector2.new(pos.X - sz/2, pos.Y - sz/2)
 
-						e.t.Text=p.Name;e.t.Position=Vector2.new(pos.X,pos.Y-sz/2-18);e.t.Color=col;e.t.Visible=true
+						e.b.Position = boxPos
+						e.b.Size = Vector2.new(sz, sz)
+						e.b.Color = col
+						e.b.Visible = true
 
-						-- Get player health and display as current/max
+						-- Get clan info
+						local clanName, clanColor = getPlayerClan(p)
+
+						e.t.Text = p.Name
+						e.t.Position = Vector2.new(pos.X, pos.Y - sz/2 - 18)
+						e.t.Color = col
+						e.t.Visible = true
+
+						-- Show clan text above player name if clan exists
+						if clanName then
+							e.clan.Text = clanName
+							e.clan.Position = Vector2.new(pos.X, pos.Y - sz/2 - 40)
+							e.clan.Color = clanColor
+							e.clan.Visible = true
+						else
+							e.clan.Visible = false
+						end
+
+						-- Always show health and all stats
 						local currentHealth, maxHealth = getPlayerHealth(p)
-						e.health.Text = formatNumber(currentHealth) .. "/" .. formatNumber(maxHealth)
-						e.health.Position = Vector2.new(pos.X,boxPos.Y+sz/2+16)
-						e.health.Visible = true
-						
-						-- Get player stats and display all three
 						local defenseValue, powerValue, magicValue, repValue = getPlayerStats(p)
-						
-						-- Defense - Blue
+
+						e.health.Text = formatNumber(currentHealth) .. "/" .. formatNumber(maxHealth)
+						e.health.Position = Vector2.new(pos.X, boxPos.Y + sz/2 + 16)
+						e.health.Visible = true
+
 						e.defense.Text = formatNumber(defenseValue)
-						e.defense.Position = Vector2.new(pos.X, boxPos.Y+sz/2+38)
+						e.defense.Position = Vector2.new(pos.X, boxPos.Y + sz/2 + 38)
 						e.defense.Visible = true
-						
-						-- Power - Red
+
 						e.power.Text = formatNumber(powerValue)
-						e.power.Position = Vector2.new(pos.X, boxPos.Y+sz/2+60)
+						e.power.Position = Vector2.new(pos.X, boxPos.Y + sz/2 + 60)
 						e.power.Visible = true
-						
-						-- Magic - Pink
+
 						e.magic.Text = formatNumber(magicValue)
-						e.magic.Position = Vector2.new(pos.X, boxPos.Y+sz/2+82)
+						e.magic.Position = Vector2.new(pos.X, boxPos.Y + sz/2 + 82)
 						e.magic.Visible = true
-						
-						-- Reputation - Color coded based on value
-						e.rep.Text = formatNumber(repValue)
+
+						-- Rep always shows; 0 should be "0" (not "Concealed")
+						e.rep.Text = (repValue == 0) and "0" or formatNumber(repValue)
 						e.rep.Color = getRepColor(repValue)
-						e.rep.Position = Vector2.new(pos.X, boxPos.Y+sz/2+104)
+						e.rep.Position = Vector2.new(pos.X, boxPos.Y + sz/2 + 104)
 						e.rep.Visible = true
 					end
 				end
+
+				for p2 in pairs(boxes) do
+					if (not p2) or (not p2.Character) or (not p2.Character:FindFirstChild('Head')) then
+						rm(p2)
+					end
+				end
 			end
-			for p in pairs(boxes)do if (not p) or (not p.Character) or (not p.Character:FindFirstChild('Head')) then rm(p)end end
 		end)
 	else
-		for p in pairs(boxes)do rm(p)end
+		for p2 in pairs(boxes) do rm(p2) end
+		boxes = {}
 	end
 end
 
@@ -1188,13 +1621,13 @@ local function TStatWH(on)cfg.StatWebhook15m=on;save();getgenv().StatWebhook15m=
 	task.spawn(function()
 		local st=RS:WaitForChild('Data'):WaitForChild(LP.Name):WaitForChild('Stats')
 		local op,od,oh,om,oy,omob=st.Power.Value,st.Defense.Value,st.Health.Value,st.Magic.Value,st.Psychics.Value,st.Mobility.Value
-		local function fmt(n)n=tonumber(n)or 0;if n>=1e15 then return string.format('%.2f',n/1e15)..'qd' end;if n>=1e12 then return string.format('%.2f',n/1e12)..'t' end
+		local function fmt(n)n=tonumber(n)or 0;if n>=1e18 then return string.format('%.2f',n/1e18)..'QN' end;if n>=1e15 then return string.format('%.2f',n/1e15)..'qd' end;if n>=1e12 then return string.format('%.2f',n/1e12)..'t' end
 			if n>=1e9 then return string.format('%.2f',n/1e9)..'b'end;if n>=1e6 then return string.format('%.2f',n/1e6)..'m'end;if n>=1e3 then return string.format('%.2f',n/1e3)..'k'end return tostring(n)end
 		while getgenv().StatWebhook15m do for i=1,900 do if not getgenv().StatWebhook15m then break end task.wait(1)end;if not getgenv().StatWebhook15m then break end
 			local np,nd,nh,nm,ny,nmob=st.Power.Value,st.Defense.Value,st.Health.Value,st.Magic.Value,st.Psychics.Value,st.Mobility.Value
 			if np>op or nd>od or nh>oh or nm>om or ny>oy or nmob>omob then
 				local t=LP.Name..' Stats Gained Last 15 Minutes'
-				local d='**Power:** '..fmt(np-op)..'\n**Defense:** '..fmt(nd-od)..'\n**Health:** '..fmt(nh-oh)..'\n**Magic:** '..fmt(nm-om)..'\n**Psychics:** '..fmt(ny-oy)..'\n**Mobility:** '..fmt(nmob-omob)
+				local d='💪 **Power:** '..fmt(np)..' → **'..fmt(np-op)..'**\n❤️ **Health:** '..fmt(nh)..' → **'..fmt(nh-oh)..'**\n🛡️ **Defense:** '..fmt(nd)..' → **'..fmt(nd-od)..'**\n🔮 **Psychics:** '..fmt(ny)..' → **'..fmt(ny-oy)..'**\n✨ **Magic:** '..fmt(nm)..' → **'..fmt(nm-om)..'**\n💨 **Mobility:** '..fmt(nmob)..' → **'..fmt(nmob-omob)..'**'
 				webhook('Stat Bot',t,d,nil);op,od,oh,om,oy,omob=np,nd,nh,nm,ny,nmob
 			end
 		end
@@ -1251,6 +1684,355 @@ local function TStatGui(on)cfg.StatGui=on;save();getgenv().StatGui=on;if not on 
 		end
 		if SG.gui then pcall(function()SG.gui:Destroy()end)end;SG.gui=nil
 	end)
+end
+
+local QuickTeleportsGUI = nil
+local function TQuickTeleports(on)
+	cfg.QuickTeleports = on
+	save()
+	getgenv().QuickTeleports = on
+	
+	if not on then
+		if QuickTeleportsGUI then
+			pcall(function() QuickTeleportsGUI:Destroy() end)
+			QuickTeleportsGUI = nil
+		end
+		return
+	end
+	
+	-- Create the Quick Teleports GUI
+	local Players = game:GetService("Players")
+	local ReplicatedStorage = game:GetService("ReplicatedStorage")
+	local LocalPlayer = Players.LocalPlayer
+
+	local ScreenGui = Instance.new("ScreenGui")
+	ScreenGui.ResetOnSpawn = false
+	ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+	QuickTeleportsGUI = ScreenGui
+
+	local Frame = Instance.new("Frame")
+	Frame.Size = UDim2.new(0, 180, 0, 200)
+	Frame.Position = UDim2.new(0, 20, 1, -220)
+	Frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+	Frame.BorderSizePixel = 0
+	Frame.Active = true
+	Frame.Draggable = true
+	Frame.Parent = ScreenGui
+
+	local UICorner = Instance.new("UICorner")
+	UICorner.CornerRadius = UDim.new(0, 8)
+	UICorner.Parent = Frame
+
+	local Title = Instance.new("TextLabel")
+	Title.Size = UDim2.new(1, 0, 0, 25)
+	Title.Position = UDim2.new(0, 0, 0, 0)
+	Title.BackgroundTransparency = 1
+	Title.Text = "Teleports"
+	Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+	Title.TextSize = 14
+	Title.Font = Enum.Font.GothamSemibold
+	Title.Parent = Frame
+
+	local function createButton(name, onClick, yPosition)
+		local Button = Instance.new("TextButton")
+		Button.Size = UDim2.new(0, 160, 0, 30)
+		Button.Position = UDim2.new(0.5, -80, 0, yPosition)
+		Button.Text = name
+		Button.Font = Enum.Font.Gotham
+		Button.TextSize = 12
+		Button.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+		Button.TextColor3 = Color3.fromRGB(255, 255, 255)
+		Button.BorderSizePixel = 0
+		Button.Parent = Frame
+
+		local UIC = Instance.new("UICorner")
+		UIC.CornerRadius = UDim.new(0, 4)
+		UIC.Parent = Button
+
+		Button.MouseEnter:Connect(function() Button.BackgroundColor3 = Color3.fromRGB(60, 60, 60) end)
+		Button.MouseLeave:Connect(function() Button.BackgroundColor3 = Color3.fromRGB(45, 45, 45) end)
+		Button.MouseButton1Click:Connect(function() pcall(onClick) end)
+	end
+
+	local function tpTo(target)
+		if not target then return end
+		local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+		local hrp = char:WaitForChild("HumanoidRootPart")
+		local cf = target:IsA("BasePart") and target.CFrame or (target.IsA and target:IsA("Model") and target:GetPivot() or nil)
+		if not cf then return end
+		hrp.CFrame = cf + Vector3.new(0, 3, 0)
+	end
+
+	-- Add all the resolver functions and teleport functions here (same as your standalone script)
+	-- For brevity, I'll include the key ones:
+	
+	local function resolveHeavensDoorPart()
+		local ok, res = pcall(function()
+			local hd = workspace:FindFirstChild("HeavensDoor")
+			return hd and hd:GetChildren()[10] or nil
+		end)
+		return ok and res or nil
+	end
+	
+	local function resolveUndergroundQDoorPart()
+		local ok, res = pcall(function()
+			local gm = workspace:FindFirstChild("GameMap")
+			local ug = gm and gm:FindFirstChild("Underground")
+			local c = ug and ug:FindFirstChild("R237G234B234")
+			local qd = c and c:FindFirstChild("? Door")
+			local mdl = qd and qd:FindFirstChild("Model")
+			return mdl and mdl:GetChildren()[2] or nil
+		end)
+		return ok and res or nil
+	end
+	
+	local function resolveIceCrystalPart()
+		local ok, res = pcall(function()
+			local child = workspace:GetChildren()[95]
+			local ic = child and child:FindFirstChild("Ice Crystal")
+			return ic and ic:GetChildren()[2] or nil
+		end)
+		return ok and res or nil
+	end
+	
+	local function resolveCatacombsCityPart()
+		local ok, res = pcall(function()
+			local city = workspace:FindFirstChild("CatacombsCity")
+			return city and city:GetChildren()[3074] or nil
+		end)
+		return ok and res or nil
+	end
+	
+	local function resolveHellMapUnion()
+		local ok, res = pcall(function()
+			local hm = workspace:FindFirstChild("HellMap")
+			return hm and hm:FindFirstChild("Union") or nil
+		end)
+		return ok and res or nil
+	end
+
+	local function resolveFireCrystalPart()
+		local ok, res = pcall(function()
+			local child = workspace:GetChildren()[117]
+			local child7 = child and child:GetChildren()[7]
+			local mdl = child7 and child7:FindFirstChild("Model")
+			local mdl2 = mdl and mdl:FindFirstChild("Model")
+			local fc = mdl2 and mdl2:FindFirstChild("Fire Crystal")
+			return fc and fc:GetChildren()[2] or nil
+		end)
+		return ok and res or nil
+	end
+	
+	local function resolvePower30()
+		local ok, res = pcall(function()
+			local ti = workspace:FindFirstChild("TrainingInterface")
+			local pwr = ti and ti:FindFirstChild("Power")
+			return pwr and pwr:FindFirstChild("30") or nil
+		end)
+		return ok and res or nil
+	end
+	
+	local function resolveHellMapPower()
+		local ok, res = pcall(function()
+			local hm = workspace:FindFirstChild("HellMap")
+			return hm and hm:GetChildren()[2729] or nil
+		end)
+		return ok and res or nil
+	end
+	
+	local function resolvePower28()
+		local ok, res = pcall(function()
+			local ti = workspace:FindFirstChild("TrainingInterface")
+			local pwr = ti and ti:FindFirstChild("Power")
+			return pwr and pwr:FindFirstChild("28") or nil
+		end)
+		return ok and res or nil
+	end
+	
+	local function resolveMeteoriteOrb()
+		local ok, res = pcall(function()
+			local meteorite = workspace:FindFirstChild("meteorite for psl")
+			return meteorite and meteorite:FindFirstChild("orb") or nil
+		end)
+		return ok and res or nil
+	end
+
+	local function resolveMagicPart()
+		local ok, res = pcall(function()
+			local child = workspace:GetChildren()[136]
+			return child and child:FindFirstChild("Part") or nil
+		end)
+		return ok and res or nil
+	end
+	
+	local function resolveMagic15()
+		local ok, res = pcall(function()
+			local ti = workspace:FindFirstChild("TrainingInterface")
+			local mag = ti and ti:FindFirstChild("Magic")
+			return mag and mag:FindFirstChild("15") or nil
+		end)
+		return ok and res or nil
+	end
+	
+	local function resolveMagic14()
+		local ok, res = pcall(function()
+			local ti = workspace:FindFirstChild("TrainingInterface")
+			local mag = ti and ti:FindFirstChild("Magic")
+			return mag and mag:FindFirstChild("14") or nil
+		end)
+		return ok and res or nil
+	end
+	
+	local function resolveMagic13()
+		local ok, res = pcall(function()
+			local ti = workspace:FindFirstChild("TrainingInterface")
+			local mag = ti and ti:FindFirstChild("Magic")
+			return mag and mag:FindFirstChild("13") or nil
+		end)
+		return ok and res or nil
+	end
+	
+	local function resolveMagic12()
+		local ok, res = pcall(function()
+			local ti = workspace:FindFirstChild("TrainingInterface")
+			local mag = ti and ti:FindFirstChild("Magic")
+			return mag and mag:FindFirstChild("12") or nil
+		end)
+		return ok and res or nil
+	end
+
+	local function resolvePsychicTree()
+		local ok, res = pcall(function()
+			local gm = workspace:FindFirstChild("GameMap")
+			local ug = gm and gm:FindFirstChild("Underground")
+			local c = ug and ug:FindFirstChild("R237G234B234")
+			local child5 = c and c:GetChildren()[5]
+			local mdl = child5 and child5:FindFirstChild("Model")
+			local tree = mdl and mdl:FindFirstChild("Tree3")
+			return tree and tree:FindFirstChild("Trunk") or nil
+		end)
+		return ok and res or nil
+	end
+	
+	local function resolvePsychic28()
+		local ok, res = pcall(function()
+			local ti = workspace:FindFirstChild("TrainingInterface")
+			local psy = ti and ti:FindFirstChild("Psychics")
+			return psy and psy:FindFirstChild("28") or nil
+		end)
+		return ok and res or nil
+	end
+	
+	local function resolvePsychic27()
+		local ok, res = pcall(function()
+			local ti = workspace:FindFirstChild("TrainingInterface")
+			local psy = ti and ti:FindFirstChild("Psychics")
+			return psy and psy:FindFirstChild("27") or nil
+		end)
+		return ok and res or nil
+	end
+	
+	local function resolvePsychic24()
+		local ok, res = pcall(function()
+			local ti = workspace:FindFirstChild("TrainingInterface")
+			local psy = ti and ti:FindFirstChild("Psychics")
+			return psy and psy:FindFirstChild("24") or nil
+		end)
+		return ok and res or nil
+	end
+	
+	local function resolvePsychic23()
+		local ok, res = pcall(function()
+			local ti = workspace:FindFirstChild("TrainingInterface")
+			local psy = ti and ti:FindFirstChild("Psychics")
+			return psy and psy:FindFirstChild("23") or nil
+		end)
+		return ok and res or nil
+	end
+	
+	local function resolvePsychic22()
+		local ok, res = pcall(function()
+			local ti = workspace:FindFirstChild("TrainingInterface")
+			local psy = ti and ti:FindFirstChild("Psychics")
+			return psy and psy:FindFirstChild("22") or nil
+		end)
+		return ok and res or nil
+	end
+
+	-- Best area teleport functions
+	local function bestDefenseTeleport()
+		local stats = ReplicatedStorage:WaitForChild("Data"):WaitForChild(LocalPlayer.Name):WaitForChild("Stats")
+		local v = stats and stats:FindFirstChild("Defense") and stats.Defense.Value or 0
+		local zones = {
+			{ req = 1e20, getter = resolveHeavensDoorPart },
+			{ req = 1e19, getter = resolveUndergroundQDoorPart },
+			{ req = 1e18, getter = resolveIceCrystalPart },
+			{ req = 1e17, getter = resolveCatacombsCityPart },
+			{ req = 1e16, getter = resolveHellMapUnion },
+		}
+		for _, z in ipairs(zones) do
+			if v >= z.req then local inst = z.getter(); if inst then tpTo(inst) return end end
+		end
+	end
+
+	local function bestPowerTeleport()
+		local stats = ReplicatedStorage:WaitForChild("Data"):WaitForChild(LocalPlayer.Name):WaitForChild("Stats")
+		local v = stats and stats:FindFirstChild("Power") and stats.Power.Value or 0
+		local zones = {
+			{ req = 1e20, getter = resolveFireCrystalPart },
+			{ req = 1e19, getter = resolvePower30 },
+			{ req = 1e18, getter = resolveHellMapPower },
+			{ req = 1e17, getter = resolvePower28 },
+			{ req = 1e16, getter = resolveMeteoriteOrb },
+		}
+		for _, z in ipairs(zones) do
+			if v >= z.req then local inst = z.getter(); if inst then tpTo(inst) return end end
+		end
+	end
+
+	local function bestMagicTeleport()
+		local stats = ReplicatedStorage:WaitForChild("Data"):WaitForChild(LocalPlayer.Name):WaitForChild("Stats")
+		local v = stats and stats:FindFirstChild("Magic") and stats.Magic.Value or 0
+		local zones = {
+			{ req = 1e20, getter = resolveMagicPart },
+			{ req = 1e19, getter = resolveMagic15 },
+			{ req = 1e18, getter = resolveMagic14 },
+			{ req = 1e17, getter = resolveMagic13 },
+			{ req = 5e15, getter = resolveMagic12 },
+		}
+		for _, z in ipairs(zones) do
+			if v >= z.req then local inst = z.getter(); if inst then tpTo(inst) return end end
+		end
+	end
+
+	local function bestPsychicTeleport()
+		local stats = ReplicatedStorage:WaitForChild("Data"):WaitForChild(LocalPlayer.Name):WaitForChild("Stats")
+		local v = stats and stats:FindFirstChild("Psychics") and stats.Psychics.Value or 0
+		local zones = {
+			{ req = 1e20, getter = resolvePsychicTree },
+			{ req = 1e19, getter = resolvePsychic28 },
+			{ req = 1e18, getter = resolvePsychic27 },
+			{ req = 1e17, getter = resolvePsychic24 },
+			{ req = 5e16, getter = resolvePsychic23 },
+			{ req = 5e15, getter = resolvePsychic22 },
+		}
+		for _, z in ipairs(zones) do
+			if v >= z.req then local inst = z.getter(); if inst then tpTo(inst) return end end
+		end
+	end
+
+	-- Create buttons
+	createButton("Dark Exotic Store", function()
+		local p = workspace:FindFirstChild("Pads")
+		local s2 = p and p:FindFirstChild("ExoticStore2")
+		local pad = s2 and s2:FindFirstChild("1")
+		tpTo(pad)
+	end, 30)
+
+	createButton("Best Defense Area", bestDefenseTeleport, 65)
+	createButton("Best Power Area", bestPowerTeleport, 100)
+	createButton("Best Magic Area", bestMagicTeleport, 135)
+	createButton("Best Psychic Area", bestPsychicTeleport, 170)
 end
 
 local AA={inv=nil,res=nil,fly=nil}
@@ -1542,6 +2324,7 @@ Toggle(U1,'Death Webhook','DeathWebhook',function(on)cfg.DeathWebhook=on;save()e
 Toggle(U1,'Panic Webhook','PanicWebhook',function(on)cfg.PanicWebhook=on;save()end)
 Toggle(U1,'Stat Webhook (15m)','StatWebhook15m',TStatWH)
 mk('TextLabel',{Size=UDim2.new(1,-12,0,22),BackgroundTransparency=1,Text='Server Hop',TextColor3=Color3.fromRGB(235,235,245),TextXAlignment=Enum.TextXAlignment.Left,TextScaled=true,Font=Enum.Font.GothamBold},U1)
+Toggle(U1,'Kick On Untrusted Players','KickOnUntrustedPlayers',TKickUntrusted)
 Btn(U1,'Find Low Server',function()
 	local TS=game:GetService('TeleportService');local function find()
 		local place=game.PlaceId;local job=game.JobId;local best,c=nil,nil
@@ -1557,8 +2340,9 @@ Btn(U1,'Find Low Server',function()
 end)
 mk('TextLabel',{Size=UDim2.new(1,-12,0,22),BackgroundTransparency=1,Text='Auto Ability',TextColor3=Color3.fromRGB(235,235,245),TextXAlignment=Enum.TextXAlignment.Left,TextScaled=true,Font=Enum.Font.GothamBold},U1)
 Toggle(U1,'Auto Invisible','AutoInvisible',TInv);Toggle(U1,'Auto Resize','AutoResize',TResize);Toggle(U1,'Auto Fly','AutoFly',TFly)
-mk('TextLabel',{Size=UDim2.new(1,-12,0,22),BackgroundTransparency=1,Text='Stat Gui',TextColor3=Color3.fromRGB(235,235,245),TextXAlignment=Enum.TextXAlignment.Left,TextScaled=true,Font=Enum.Font.GothamBold},U1)
+mk('TextLabel',{Size=UDim2.new(1,-12,0,22),BackgroundTransparency=1,Text='Guis',TextColor3=Color3.fromRGB(235,235,245),TextXAlignment=Enum.TextXAlignment.Left,TextScaled=true,Font=Enum.Font.GothamBold},U1)
 Toggle(U1,'Stat Gui','StatGui',TStatGui)
+Toggle(U1,'Quick Teleport Gui','QuickTeleports',TQuickTeleports)
 
 local V1=Section(Visual,'Visual Features')
 Toggle(V1,'Player ESP','PlayerESP',TPlayerESP)
@@ -1590,40 +2374,41 @@ Toggle(P1,'Consume Super','AutoConsumeSuper',TConsumeSuper)
 local Cfg=Section(Conf,'Configuration')
 local SB=Btn(Cfg,'Save Config',function()save()end)
 local LB=Btn(Cfg,'Load Config',function()
-	if load()~=nil then
-		local function ap(flag,get,tgl)if get()~=flag then tgl(flag)end end
-		ap(cfg.NoClip,function()return getgenv().NoClip or false end,TNoClip)
-		ap(cfg.GraphicsOptimization,function()return getgenv().GraphicsOptimization or false end,TAFK)
-		ap(cfg.GraphicsOptimizationAdvanced,function()return getgenv().GraphicsOptimizationAdvanced or false end,TGfxAdv)
-		ap(cfg.UltimateAFKOptimization,function()return cfg.UltimateAFKOptimization end,TUltimate)
-		ap(cfg.PlayerESP,function()return getgenv().PlayerESP or false end,TPlayerESP)
-		ap(cfg.UniversalFireBallAimbot,function()return getgenv().UniversalFireBallAimbot or false end,UFA)
-		ap(cfg.FireBallAimbot,function()return getgenv().FireBallAimbot or false end,CatAimbot)
-		ap(cfg.FireBallAimbotCity,function()return getgenv().FireBallAimbotCity or false end,CityAimbot)
-		ap(cfg.AutoWashDishes,function()return getgenv().AutoWashDishes or false end,TWash)
-		ap(cfg.AutoNinjaSideTask,function()return getgenv().AutoNinjaSideTask or false end,TNinja)
-		ap(cfg.AutoAnimatronicsSideTask,function()return getgenv().AutoAnimatronicsSideTask or false end,TAnim)
-		ap(cfg.AutoMutantsSideTask,function()return getgenv().AutoMutantsSideTask or false end,TMut)
-		ap(cfg.DualExoticShop,function()return getgenv().DualExoticShop or false end,TDualExotic)
-		ap(cfg.VendingPotionAutoBuy,function()return getgenv().VendingPotionAutoBuy or false end,TVend)
-		ap(cfg.StatWebhook15m,function()return getgenv().StatWebhook15m or false end,TStatWH)
-		ap(cfg.KillAura,function()return getgenv().KillAura or false end,TKA)
-		ap(cfg.StatGui,function()return getgenv().StatGui or false end,TStatGui)
-		ap(cfg.AutoInvisible,function()return getgenv().AutoInvisible or false end,TInv)
-		ap(cfg.AutoResize,function()return getgenv().AutoResize or false end,TResize)
-		ap(cfg.AutoFly,function()return getgenv().AutoFly or false end,TFly)
-		ap(cfg.HealthExploit,function()return getgenv().HealthExploit or false end,THealthExploit)
-		ap(cfg.GammaAimbot,function()return getgenv().GammaAimbot or false end,TGamma)
-		ap(cfg.InfiniteZoom,function()return getgenv().InfiniteZoom or false end,TInfiniteZoom)  -- ADD THIS LINE
-		ap(cfg.AutoConsumePower,function()return getgenv().AutoConsumePower or false end,TConsumePower)
-		ap(cfg.AutoConsumeHealth,function()return getgenv().AutoConsumeHealth or false end,TConsumeHealth)
-		ap(cfg.AutoConsumeDefense,function()return getgenv().AutoConsumeDefense or false end,TConsumeDefense)
-		ap(cfg.AutoConsumePsychic,function()return getgenv().AutoConsumePsychic or false end,TConsumePsychic)
-		ap(cfg.AutoConsumeMagic,function()return getgenv().AutoConsumeMagic or false end,TConsumeMagic)
-		ap(cfg.AutoConsumeMobility,function()return getgenv().AutoConsumeMobility or false end,TConsumeMobility)
-        ap(cfg.AutoConsumeSuper,function()return getgenv().AutoConsumeSuper or false end,TConsumeSuper)
-		getgenv().SmartPanic=cfg.SmartPanic and true or false
-	end
+	load()
+	local function ap(flag,get,tgl) if get() ~= flag then tgl(flag) end end
+	ap(cfg.NoClip,function()return getgenv().NoClip or false end,TNoClip)
+	ap(cfg.GraphicsOptimization,function()return getgenv().GraphicsOptimization or false end,TAFK)
+	ap(cfg.GraphicsOptimizationAdvanced,function()return getgenv().GraphicsOptimizationAdvanced or false end,TGfxAdv)
+	ap(cfg.UltimateAFKOptimization,function()return cfg.UltimateAFKOptimization end,TUltimate)
+	ap(cfg.PlayerESP,function()return getgenv().PlayerESP or false end,TPlayerESP)
+	ap(cfg.UniversalFireBallAimbot,function()return getgenv().UniversalFireBallAimbot or false end,UFA)
+	ap(cfg.FireBallAimbot,function()return getgenv().FireBallAimbot or false end,CatAimbot)
+	ap(cfg.FireBallAimbotCity,function()return getgenv().FireBallAimbotCity or false end,CityAimbot)
+	ap(cfg.AutoWashDishes,function()return getgenv().AutoWashDishes or false end,TWash)
+	ap(cfg.AutoNinjaSideTask,function()return getgenv().AutoNinjaSideTask or false end,TNinja)
+	ap(cfg.AutoAnimatronicsSideTask,function()return getgenv().AutoAnimatronicsSideTask or false end,TAnim)
+	ap(cfg.AutoMutantsSideTask,function()return getgenv().AutoMutantsSideTask or false end,TMut)
+	ap(cfg.DualExoticShop,function()return getgenv().DualExoticShop or false end,TDualExotic)
+	ap(cfg.VendingPotionAutoBuy,function()return getgenv().VendingPotionAutoBuy or false end,TVend)
+	ap(cfg.StatWebhook15m,function()return getgenv().StatWebhook15m or false end,TStatWH)
+	ap(cfg.KillAura,function()return getgenv().KillAura or false end,TKA)
+	ap(cfg.StatGui,function()return getgenv().StatGui or false end,TStatGui)
+	ap(cfg.QuickTeleports,function()return getgenv().QuickTeleports or false end,TQuickTeleports)
+	ap(cfg.AutoInvisible,function()return getgenv().AutoInvisible or false end,TInv)
+	ap(cfg.AutoResize,function()return getgenv().AutoResize or false end,TResize)
+	ap(cfg.AutoFly,function()return getgenv().AutoFly or false end,TFly)
+	ap(cfg.HealthExploit,function()return getgenv().HealthExploit or false end,THealthExploit)
+	ap(cfg.GammaAimbot,function()return getgenv().GammaAimbot or false end,TGamma)
+	ap(cfg.InfiniteZoom,function()return getgenv().InfiniteZoom or false end,TInfiniteZoom)
+	ap(cfg.AutoConsumePower,function()return getgenv().AutoConsumePower or false end,TConsumePower)
+	ap(cfg.KickOnUntrustedPlayers,function()return getgenv().KickOnUntrustedPlayers or false end,TKickUntrusted)
+	ap(cfg.AutoConsumeHealth,function()return getgenv().AutoConsumeHealth or false end,TConsumeHealth)
+	ap(cfg.AutoConsumeDefense,function()return getgenv().AutoConsumeDefense or false end,TConsumeDefense)
+	ap(cfg.AutoConsumePsychic,function()return getgenv().AutoConsumePsychic or false end,TConsumePsychic)
+	ap(cfg.AutoConsumeMagic,function()return getgenv().AutoConsumeMagic or false end,TConsumeMagic)
+	ap(cfg.AutoConsumeMobility,function()return getgenv().AutoConsumeMobility or false end,TConsumeMobility)
+	ap(cfg.AutoConsumeSuper,function()return getgenv().AutoConsumeSuper or false end,TConsumeSuper)
+	getgenv().SmartPanic = cfg.SmartPanic and true or false
 end)
 SB.Position=UDim2.new(0,0,0,0);LB.Position=UDim2.new(0,270,0,0)
 local SHK=Btn(Cfg,"Set Hide Key ("..(cfg.HideGUIKey or'RightControl')..")",function()waitingKey=true;SHK.Text='Press any key...'end);SetHideBtn=SHK;SHK.Position=UDim2.new(0,540,0,0)
