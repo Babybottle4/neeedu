@@ -4,6 +4,17 @@ local U=game:GetService('UserInputService');local R=game:GetService('RunService'
 local L=game:GetService('Lighting');local RS=game:GetService('ReplicatedStorage')
 local LP=P.LocalPlayer;local Cam=workspace.CurrentCamera
 
+-- Destroy PlayerGui.VendingMachine.VendingMachine on start (no GUI toggle)
+task.spawn(function()
+	pcall(function()
+		local pg = LP:WaitForChild("PlayerGui",10)
+		if not pg then return end
+		local vmRoot = pg:FindFirstChild("VendingMachine")
+		local vm = vmRoot and vmRoot:FindFirstChild("VendingMachine")
+		if vm then vm:Destroy() end
+	end)
+end)
+
 local WURL=(getgenv and getgenv().Webhook)or'';local WID=(getgenv and tostring(getgenv().UserID))or''
 local function req()return(syn and syn.request)or(http and http.request)or(getgenv and getgenv().request)or http_request or(fluxus and fluxus.request)end
 local function webhook(user,title,desc,ping)
@@ -24,90 +35,86 @@ local cfg={
 	VendingPotionAutoBuy=false,RemoveMapClutter=false,StatWebhook15m=false,KillAura=false,StatGui=false,
 	AutoInvisible=false,AutoResize=false,AutoFly=false,HealthExploit=false,GammaAimbot=false,InfiniteZoom=false,
 	AutoConsumePower=false,AutoConsumeHealth=false,AutoConsumeDefense=false,AutoConsumePsychic=false,AutoConsumeMagic=false,AutoConsumeMobility=false,AutoConsumeSuper=false,QuickTeleports=false,
-	KickOnUntrustedPlayers=false,
+	KickOnUntrustedPlayers=false,AutoBlock=false,CombatLog=false,
+	UFASelectedMobs={},
 	fireballCooldown=0.1,cityFireballCooldown=0.5,universalFireballInterval=1.0,HideGUIKey='RightControl',
 }
 local function save()pcall(function()writefile('SuperPowerLeague_Config.json',H:JSONEncode(cfg))end)end
 local function load()pcall(function()if isfile('SuperPowerLeague_Config.json')then for k,v in pairs(H:JSONDecode(readfile('SuperPowerLeague_Config.json')))do cfg[k]=v end end end)end
 load()
-local targetAttempts = {} -- Global attempt tracking for aimbots
-
--- Kick on Untrusted Players System
-local TRUST_WHITELIST = { 
-    ["1nedu"] = true, 
-    ["209Flaw"] = true 
-}
-
-local function isTrustedPlayer(playerName)
-    return TRUST_WHITELIST[playerName] == true
+if type(cfg.UFASelectedMob)=="string" and cfg.UFASelectedMob~="" then
+	cfg.UFASelectedMobs = cfg.UFASelectedMobs or {}
+	cfg.UFASelectedMobs[cfg.UFASelectedMob]=true
+	cfg.UFASelectedMob=nil
+	save()
 end
+cfg.UFASelectedMobs = cfg.UFASelectedMobs or {}
+local targetAttempts={}
 
+-- persistent saved teleport
+local SAVEP_FILE='SuperPowerLeague_SavePos.json'
+local savedCFrame=nil
+local function cfToTable(cf)local a={cf:GetComponents()};return a end
+local function tableToCF(t)if type(t)=='table' and #t==12 then return CFrame.new(unpack(t)) end return nil end
+local function persistSave(cf)local ok,err=pcall(function()writefile(SAVEP_FILE,H:JSONEncode(cfToTable(cf)))end)end
+local function loadPersistedSave()if isfile(SAVEP_FILE)then local ok,data=pcall(function()return H:JSONDecode(readfile(SAVEP_FILE))end);if ok then local cf=tableToCF(data);if cf then savedCFrame=cf end end end end
+loadPersistedSave()
+-- Auto-teleport to saved position on execute (controlled by getgenv().TeleportOnStart)
+task.spawn(function()
+	if getgenv and getgenv().TeleportOnStart then
+		local cf = savedCFrame
+		if not cf then loadPersistedSave(); cf = savedCFrame end
+		if cf then
+			local char = LP.Character or LP.CharacterAdded:Wait()
+			local hrp = char:WaitForChild("HumanoidRootPart", 10)
+			if hrp then pcall(function() char:PivotTo(cf) end) end
+		end
+	end
+end)
+
+local TRUST_WHITELIST = { ["1nedu"]=true, ["209Flaw"]=true }
+local function isTrustedPlayer(playerName) return TRUST_WHITELIST[playerName]==true end
 local function kickUntrustedCheck()
-    print("Checking for untrusted players...")
-    for _, player in ipairs(P:GetPlayers()) do
-        if player ~= LP then
-            print("Found player: " .. player.Name)
-            if isTrustedPlayer(player.Name) then
-                print("Player " .. player.Name .. " is TRUSTED")
-            else
-                print("Player " .. player.Name .. " is UNTRUSTED - Kicking...")
-                LP:Kick("Untrusted player detected in server.")
-                return
-            end
-        end
-    end
-    print("No untrusted players found")
+	for _, player in ipairs(P:GetPlayers()) do
+		if player~=LP then
+			if not isTrustedPlayer(player.Name) then
+				LP:Kick("Untrusted player detected in server.")
+				return
+			end
+		end
+	end
 end
-
 local function TKickUntrusted(on)
-    cfg.KickOnUntrustedPlayers = on
-    save()
-    getgenv().KickOnUntrustedPlayers = on
-
-    if on then
-        print("Kick on Untrusted Players enabled")
-        kickUntrustedCheck()
-        
-        -- Monitor for new players
-        P.PlayerAdded:Connect(function(player)
-            print("New player joined: " .. player.Name)
-            if isTrustedPlayer(player.Name) then
-                print("Player " .. player.Name .. " is TRUSTED")
-            else
-                print("Player " .. player.Name .. " is UNTRUSTED - Kicking...")
-                LP:Kick("Untrusted player detected in server.")
-            end
-        end)
-    else
-        print("Kick on Untrusted Players disabled")
-    end
+	cfg.KickOnUntrustedPlayers=on;save();getgenv().KickOnUntrustedPlayers=on
+	if on then
+		kickUntrustedCheck()
+		P.PlayerAdded:Connect(function(player)
+			if not isTrustedPlayer(player.Name) then
+				LP:Kick("Untrusted player detected in server.")
+			end
+		end)
+	end
 end
 
--- Teleport exotic stores to specific positions instantly
+-- Teleport exotic stores to specific positions instantly (height adjusted)
 task.spawn(function()
 	pcall(function()
 		local exoticStore = workspace.Pads.ExoticStore["1"]
 		local exoticStore2 = workspace.Pads.ExoticStore2["1"]
-
-		-- Target positions
-		local pos1 = Vector3.new(247.56602478027344, 30017.4453125, -1489.92529296875) -- ExoticStore
-		local pos2 = Vector3.new(254.81280517578125, 30017.4453125, -1514.7242431640625) -- ExoticStore2
-
-		-- Move them by setting their CFrame
+		local pos1 = Vector3.new(-167.33985900878906, 93824, 156.6094207763672)
+		local pos2 = Vector3.new(-180.12326049804688, 93824, 134.66819763183594)
 		exoticStore.CFrame = CFrame.new(pos1)
 		exoticStore2.CFrame = CFrame.new(pos2)
-
-		print("Teleported ExoticStore and ExoticStore2 to target positions")
 	end)
 end)
 
--- Train mobility script starts instantly
+-- Train mobility
 task.spawn(function()
 	pcall(function()
 		local args = {}
 		while true do
 			game:GetService("ReplicatedStorage"):WaitForChild("Events", 9e9):WaitForChild("Train", 9e9):WaitForChild("TrainMobility", 9e9):FireServer(unpack(args))
-			task.wait(0.1) -- wait for 0.1 seconds before the next iteration
+			task.wait(0.1)
 		end
 	end)
 end)
@@ -121,7 +128,8 @@ local function disableAimbots()
 	end
 end
 
-local lastPanicSentAt,PANIC_THRESHOLD,PANIC_COOLDOWN,REARM=0,0.95,5,0.95
+-- death + panic hooks (panic under 50% for webhook trigger baseline)
+local lastPanicSentAt,PANIC_THRESHOLD,PANIC_COOLDOWN,REARM=0,0.5,5,0.95
 local function initDeathPanic()
 	local function hook(c)
 		local h=c:WaitForChild('Humanoid',10);if not h then return end
@@ -136,7 +144,6 @@ local function initDeathPanic()
 			local r,now=hp/m,os.clock()
 			if r<=PANIC_THRESHOLD and armed then
 				if(now-lastP)<MIN then return end;lastP=now;armed=false;disableAimbots()
-				if cfg.PanicWebhook and(now-lastPanicSentAt)>=PANIC_COOLDOWN then lastPanicSentAt=now;panicWH(LP.Name) end
 			elseif r>=REARM then armed=true end
 		end)
 		task.defer(function()
@@ -148,24 +155,20 @@ end
 initDeathPanic()
 
 getgenv().SmartPanic=cfg.SmartPanic and true or false
-local TARGET_PLACE=79106917651793
-local function fallbackCF()for _,d in ipairs(workspace:GetDescendants())do if d:IsA('SpawnLocation')then return d.CFrame end end local _,_,hrp=charHum();return hrp and(hrp.CFrame+Vector3.new(0,35,0)) or nil end
-local function panicCF()
-	if game.PlaceId==TARGET_PLACE then
-		local l=workspace:FindFirstChild('Lobby');local e=l and l:FindFirstChild('Extras');local s=e and e:FindFirstChild('PvPSign')or nil
-		if not s then for _,d in ipairs(workspace:GetDescendants())do if d.Name=='PvPSign'then s=d;break end end end
-		if s then return s:IsA('Model') and s:GetPivot() or s.CFrame end
-	else
-		local ts=workspace:FindFirstChild('TopStat8');local d=ts and ts:FindFirstChild('Design');if d then local n=d:GetChildren()[30];if n then return n:IsA('Model')and n:GetPivot() or n.CFrame end end
-	end
-	return fallbackCF()
-end
+local function panicCF()return CFrame.new(Vector3.new(-167.33985900878906, 938243, 156.6094207763672))end
 task.spawn(function()
 	local last,armed=0,true
 	while true do
 		if getgenv().SmartPanic then
 			local c,h=charHum();if h then local m=(h.MaxHealth and h.MaxHealth>0)and h.MaxHealth or 100;local now=os.clock()
-				if armed and h.Health>0 and h.Health<=0.90*m and(now-last)>=1.5 then local cf=panicCF();if cf and LP.Character then pcall(function()LP.Character:PivotTo(cf)end)end last=now;armed=false;disableAimbots()
+				if armed and h.Health>0 and h.Health<=0.50*m and(now-last)>=1.5 then 
+	local cf=panicCF()
+	if cf and LP.Character then 
+		pcall(function()LP.Character:PivotTo(cf)end)
+		if cfg.PanicWebhook then panicWH(LP.Name) end
+	end
+	last=now
+	armed=false
 				elseif not armed and h.Health>=REARM*m then armed=true end
 			end
 		end
@@ -177,6 +180,44 @@ local G=Instance.new('ScreenGui');G.Name='SuperPowerLeagueGUI';G.ZIndexBehavior=
 local function parentGui(gui)local p=(gethui and gethui())or game:FindFirstChildOfClass('CoreGui')or LP:WaitForChild('PlayerGui');if syn and syn.protect_gui and p==game:GetService('CoreGui')then pcall(syn.protect_gui,gui)end gui.Parent=p end
 parentGui(G)
 local function mk(t,pr,par)local i=Instance.new(t);for k,v in pairs(pr or{})do i[k]=v end;if par then i.Parent=par end;return i end
+
+-- Minimal Stat Screen (P to toggle)
+do
+	local player=LP
+	local playerGui=player:WaitForChild("PlayerGui")
+	local function formatNumber(n)n=tonumber(n)or 0;if n>=1e18 then return string.format('%.3fqn',n/1e18)end;if n>=1e15 then return string.format('%.3fqd',n/1e15)end;if n>=1e12 then return string.format('%.3ft',n/1e12)end
+		if n>=1e9 then return string.format('%.3fb',n/1e9)end;if n>=1e6 then return string.format('%.3fm',n/1e6)end;if n>=1e3 then return string.format('%.3fk',n/1e3)end return tostring(n)end
+	local function getNumberValue(c,n)if not c then return 0 end local v=c:FindFirstChild(n)if v and v:IsA('ValueBase')then return tonumber(v.Value)or 0 end return 0 end
+	local function getStringValue(c,n)if not c then return '' end local v=c:FindFirstChild(n)if v and v:IsA('ValueBase')then return tostring(v.Value or'')end return '' end
+	local function lightenColor(color,factor)factor=math.clamp(factor or 0.4,0,1)local r=color.R+(1-color.R)*factor local g=color.G+(1-color.G)*factor local b=color.B+(1-color.B)*factor return Color3.new(r,g,b)end
+	local dataFolder=RS:WaitForChild("Data");local playerData=dataFolder:WaitForChild(player.Name);local statsFolder=playerData:WaitForChild("Stats")
+	local screenGui=Instance.new("ScreenGui");screenGui.IgnoreGuiInset=true;screenGui.ResetOnSpawn=false;screenGui.Name="NeduStatsScreen";screenGui.Enabled=false;screenGui.Parent=playerGui
+	local frame=Instance.new("Frame");frame.Size=UDim2.new(1,0,1,0);frame.BackgroundTransparency=0;frame.BackgroundColor3=Color3.new(0,0,0);frame.Parent=screenGui
+	local layout=Instance.new("UIListLayout");layout.Parent=frame;layout.SortOrder=Enum.SortOrder.LayoutOrder;layout.Padding=UDim.new(0,10);layout.HorizontalAlignment=Enum.HorizontalAlignment.Center;layout.VerticalAlignment=Enum.VerticalAlignment.Center;layout.FillDirection=Enum.FillDirection.Vertical
+	local function createLabel(key,title,base,lf,stroke)local lbl=Instance.new("TextLabel");lbl.Name=key;lbl.Size=UDim2.new(1,-80,0,56);lbl.BackgroundTransparency=1;lbl.Font=Enum.Font.GothamBold;lbl.TextXAlignment=Enum.TextXAlignment.Center;lbl.TextYAlignment=Enum.TextYAlignment.Center;lbl.TextSize=45;local fill=lightenColor(base,lf or 0.45);lbl.TextColor3=fill;lbl.TextStrokeTransparency=0;lbl.TextStrokeColor3=stroke or base;lbl.Text=title..": 0";lbl.Parent=frame;return lbl end
+	local function createSeparator(name)local line=Instance.new("Frame");line.Name=name;line.Size=UDim2.new(1,0,0,2);line.BackgroundTransparency=0;line.BorderSizePixel=0;line.BackgroundColor3=Color3.fromRGB(255,255,255);line.Parent=frame;return line end
+	local function createSmallLabel(key,title,base,lf,stroke)local lbl=Instance.new("TextLabel");lbl.Name=key;lbl.Size=UDim2.new(1,-80,0,28);lbl.BackgroundTransparency=1;lbl.Font=Enum.Font.GothamBold;lbl.TextXAlignment=Enum.TextXAlignment.Center;lbl.TextYAlignment=Enum.TextYAlignment.Center;lbl.TextSize=24;local fill=lightenColor(base,lf or 0.45);lbl.TextColor3=fill;lbl.TextStrokeTransparency=0.25;lbl.TextStrokeColor3=stroke or base;lbl.Text=title..": 0";lbl.Parent=frame;return lbl end
+	local function createBoostRow()local row=Instance.new("Frame");row.Name="BoostRow";row.Size=UDim2.new(1,-80,0,28);row.BackgroundTransparency=1;row.Parent=frame;local hlist=Instance.new("UIListLayout");hlist.Parent=row;hlist.FillDirection=Enum.FillDirection.Horizontal;hlist.HorizontalAlignment=Enum.HorizontalAlignment.Center;hlist.VerticalAlignment=Enum.VerticalAlignment.Center;hlist.Padding=UDim.new(0,8);hlist.SortOrder=Enum.SortOrder.LayoutOrder;return row end
+	local function createBoostLabel(i,parent)local lbl=Instance.new("TextLabel");lbl.Name="Boost"..i;lbl.BackgroundTransparency=1;lbl.AutomaticSize=Enum.AutomaticSize.XY;lbl.Size=UDim2.new(0,0,0,28);lbl.Font=Enum.Font.GothamBold;lbl.TextSize=24;lbl.TextXAlignment=Enum.TextXAlignment.Center;lbl.TextYAlignment=Enum.TextYAlignment.Center;lbl.TextColor3=Color3.fromRGB(255,255,255);lbl.TextStrokeTransparency=0.25;lbl.TextStrokeColor3=Color3.fromRGB(200,200,200);lbl.Text="";lbl.Visible=false;lbl.Parent=parent;return lbl end
+	local STAT_COLORS={Power=Color3.fromRGB(255,80,80),Health=Color3.fromRGB(80,255,80),Defense=Color3.fromRGB(80,80,255),Psychics=Color3.fromRGB(160,80,200),Magic=Color3.fromRGB(255,140,200),Mobility=Color3.fromRGB(255,255,120),Tokens=Color3.fromRGB(255,170,0)}
+	local labels={Timer=createLabel("Timer","",Color3.fromRGB(255,255,255)),SepTop=createSeparator("SepTop"),Training=createLabel("Training","📋 Training",Color3.fromRGB(255,255,255)),SepBottom=createSeparator("SepBottom")}
+	local boostRow=createBoostRow()local BOOST_EMOJIS={"💪","❤️","🛡️","🔮","✨","💨"}local boostLabels={}for i=1,6 do boostLabels[i]=createBoostLabel(i,boostRow)end
+	labels.Tokens=createSmallLabel("Tokens","💰 Tokens",Color3.fromRGB(255,170,0),0.25,Color3.fromRGB(200,120,0))
+	labels.Power=createLabel("Power","💪 Power",Color3.fromRGB(255,80,80));labels.Health=createLabel("Health","❤️ Health",Color3.fromRGB(80,255,80));labels.Defense=createLabel("Defense","🛡️ Defense",Color3.fromRGB(80,80,255));labels.Psychics=createLabel("Psychics","🔮 Psychics",Color3.fromRGB(160,80,200));labels.Magic=createLabel("Magic","✨ Magic",Color3.fromRGB(255,140,200));labels.Mobility=createLabel("Mobility","💨 Mobility",Color3.fromRGB(255,255,120));labels.TotalPower=createLabel("TotalPower","📊 Total Power",Color3.fromRGB(255,255,255));labels.TotalPowerEarned=createLabel("TotalPowerEarned","📈 Total Power Earned",Color3.fromRGB(255,255,255))
+	local startTime=os.time()labels.Timer.Text="00:00:00"
+	local function updateTimer()local elapsed=os.time()-startTime;local hours=math.floor(elapsed/3600);local minutes=math.floor((elapsed%3600)/60);local seconds=elapsed%60;labels.Timer.Text=string.format("%02d:%02d:%02d",hours,minutes,seconds)end
+	local function setTrainingDividersColor(statName)local color=STAT_COLORS[statName];if color then labels.SepTop.BackgroundColor3=color;labels.SepBottom.BackgroundColor3=color;labels.SepTop.Visible=true;labels.SepBottom.Visible=true else labels.SepTop.Visible=false;labels.SepBottom.Visible=false end end
+	local function getPotionBonus(index)local hud=playerGui:FindFirstChild("HUD");if not hud then return "" end local topUi=hud:FindFirstChild("TopUi");if not topUi then return "" end local rank=topUi:FindFirstChild("Rank");if not rank then return "" end local data=rank:FindFirstChild("Data");if not data then return "" end local potionEffect=data:FindFirstChild("PotionEffect");if not potionEffect then return "" end local slot=potionEffect:FindFirstChild(tostring(index));if not slot then return "" end local design=slot:FindFirstChild("Design");if not design then return "" end local bonus=design:FindFirstChild("Bonus");if not bonus then return "" end if bonus:IsA("ValueBase")then return tostring(bonus.Value or"")end if bonus:IsA("TextLabel")or bonus:IsA("TextBox")or bonus:IsA("TextButton")then return tostring(bonus.Text or"")end return "" end
+	local initialTotalPower=getNumberValue(statsFolder,"TotalPower")
+	local function updateBoosts()for i=1,6 do local bonusText=getPotionBonus(i);local lbl=boostLabels[i];if bonusText~=""then lbl.Text=string.format("%s %s",BOOST_EMOJIS[i],bonusText);lbl.Visible=true else lbl.Text="";lbl.Visible=false end end end
+	local function updateStats()local s=statsFolder;local statTraining=getStringValue(s,"StatTraining");local trainingTick=getNumberValue(s,"TrainingTick");if statTraining==""then labels.Training.Text="📋 Training None";setTrainingDividersColor(nil)else labels.Training.Text=string.format("📋 Training %s +%s Per Tick",statTraining,formatNumber(trainingTick));setTrainingDividersColor(statTraining)end
+		local power=getNumberValue(s,"Power");local health=getNumberValue(s,"Health");local defense=getNumberValue(s,"Defense");local psychics=getNumberValue(s,"Psychics");local magic=getNumberValue(s,"Magic");local mobility=getNumberValue(s,"Mobility");local totalPower=getNumberValue(s,"TotalPower");local tokens=getNumberValue(s,"Tokens")
+		labels.Tokens.Text="💰 Tokens: "..formatNumber(tokens);labels.Power.Text="💪 Power: "..formatNumber(power);labels.Health.Text="❤️ Health: "..formatNumber(health);labels.Defense.Text="🛡️ Defense: "..formatNumber(defense);labels.Psychics.Text="🔮 Psychics: "..formatNumber(psychics);labels.Magic.Text="✨ Magic: "..formatNumber(magic);labels.Mobility.Text="💨 Mobility: "..formatNumber(mobility);labels.TotalPower.Text="📊 Total Power: "..formatNumber(totalPower)
+		local earned=math.max(0,totalPower-(initialTotalPower or totalPower));labels.TotalPowerEarned.Text="📈 Total Power Earned: "..formatNumber(earned)
+	end
+	task.spawn(function()while task.wait(1) do updateTimer();updateStats();updateBoosts() end end)
+	U.InputBegan:Connect(function(i,gp)if gp then return end if i.KeyCode==Enum.KeyCode.P then screenGui.Enabled=not screenGui.Enabled end end)
+end
 
 local BG=mk('Frame',{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1},G)
 local SD=mk('ImageLabel',{Size=UDim2.new(0,860,0,560),Position=UDim2.new(0.5,-430,0.5,-280),BackgroundTransparency=1,Image='rbxassetid://5107167611',ImageColor3=Color3.fromRGB(0,0,0),ImageTransparency=0.25,ScaleType=Enum.ScaleType.Slice,SliceCenter=Rect.new(10,10,118,118)},BG)
@@ -276,7 +317,6 @@ CLayout:GetPropertyChangedSignal('AbsoluteContentSize'):Connect(function()CScrol
 local UScroll=mk('ScrollingFrame',{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,ScrollBarThickness=6,CanvasSize=UDim2.new(0,0,0,0)},Util)
 local ULayout=mk('UIListLayout',{Padding=UDim.new(0,10),SortOrder=Enum.SortOrder.LayoutOrder},UScroll)
 ULayout:GetPropertyChangedSignal('AbsoluteContentSize'):Connect(function()UScroll.CanvasSize=UDim2.new(0,0,0,ULayout.AbsoluteContentSize.Y+12)end)
-
 local TR=mk('Frame',{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1},Tele)
 local LC=mk('ScrollingFrame',{Name='LeftCol',Size=UDim2.new(0.55,-8,1,0),BackgroundTransparency=1,ScrollBarThickness=6,CanvasSize=UDim2.new(0,0,0,0)},TR)
 local LL=mk('UIListLayout',{Padding=UDim.new(0,8),SortOrder=Enum.SortOrder.LayoutOrder},LC)
@@ -302,320 +342,75 @@ P.PlayerRemoving:Connect(function(pl)if pbtn[pl]then pcall(function()pbtn[pl]:De
 title(RC,'Saved Position')
 local row=mk('Frame',{Size=UDim2.new(1,0,0,0),BackgroundTransparency=1},RC)
 local rowL=mk('UIListLayout',{Padding=UDim.new(0,6),SortOrder=Enum.SortOrder.LayoutOrder},row)
-Btn(row,'Save Place',function()local _,_,hrp=charHum();if hrp then _G.__SavedCFrame=hrp.CFrame end end)
-Btn(row,'Teleport To Save',function()local cf=_G.__SavedCFrame;local c=LP.Character;if cf and c then pcall(function()c:PivotTo(cf)end)end end)
+Btn(row,'Save Place',function()
+	local c,_,hrp=charHum();if hrp then
+		local cf=hrp.CFrame
+		_G.__SavedCFrame=cf
+		savedCFrame=cf
+		persistSave(cf)
+	end
+end)
+Btn(row,'Teleport To Save',function()
+	local cf=_G.__SavedCFrame or savedCFrame
+	if not cf then loadPersistedSave(); cf=savedCFrame end
+	local c=LP.Character;if cf and c then pcall(function()c:PivotTo(cf)end)end
+end)
 rowL:GetPropertyChangedSignal('AbsoluteContentSize'):Connect(function()row.Size=UDim2.new(1,0,0,rowL.AbsoluteContentSize.Y)end)
 
 -- Zones (RIGHT COLUMN)
 title(RC,'Zones')
 
--- Defense zones
-local function resolveHeavensDoorPart()
-	local ok, res = pcall(function()
-		local hd = workspace:FindFirstChild("HeavensDoor")
-		return hd and hd:GetChildren()[10] or nil
-	end)
-	return ok and res or nil
+-- Defense zones resolvers
+local function resolveHeavensDoorPart()local ok,res=pcall(function()local hd=workspace:FindFirstChild("HeavensDoor")return hd and hd:GetChildren()[10] or nil end)return ok and res or nil end
+local function resolveUndergroundQDoorPart()local ok,res=pcall(function()local gm=workspace:FindFirstChild("GameMap");local ug=gm and gm:FindFirstChild("Underground");local c=ug and ug:FindFirstChild("R237G234B234");local qd=c and c:FindFirstChild("? Door");local mdl=qd and qd:FindFirstChild("Model")return mdl and mdl:GetChildren()[2] or nil end)return ok and res or nil end
+local function resolveIceCrystalPart()local ok,res=pcall(function()local child=workspace:GetChildren()[95];local ic=child and child:FindFirstChild("Ice Crystal")return ic and ic:GetChildren()[2] or nil end)return ok and res or nil end
+local function resolveCatacombsCityPart()local ok,res=pcall(function()local city=workspace:FindFirstChild("CatacombsCity")return city and city:GetChildren()[3074] or nil end)return ok and res or nil end
+local function resolveHellMapUnion()local ok,res=pcall(function()local hm=workspace:FindFirstChild("HellMap")return hm and hm:FindFirstChild("Union") or nil end)return ok and res or nil end
+
+-- Power zones resolvers
+local function resolveFireCrystalPart()local ok,res=pcall(function()local child=workspace:GetChildren()[117];local child7=child and child:GetChildren()[7];local mdl=child7 and child7:FindFirstChild("Model");local mdl2=mdl and mdl:FindFirstChild("Model");local fc=mdl2 and mdl2:FindFirstChild("Fire Crystal")return fc and fc:GetChildren()[2] or nil end)return ok and res or nil end
+local function resolvePower30()local ok,res=pcall(function()local ti=workspace:FindFirstChild("TrainingInterface");local pwr=ti and ti:FindFirstChild("Power")return pwr and pwr:FindFirstChild("30") or nil end)return ok and res or nil end
+local function resolveHellMapPower()local ok,res=pcall(function()local hm=workspace:FindFirstChild("HellMap")return hm and hm:GetChildren()[2729] or nil end)return ok and res or nil end
+local function resolvePower28()local ok,res=pcall(function()local ti=workspace:FindFirstChild("TrainingInterface");local pwr=ti and ti:FindFirstChild("Power")return pwr and pwr:FindFirstChild("28") or nil end)return ok and res or nil end
+local function resolveMeteoriteOrb()local ok,res=pcall(function()local meteorite=workspace:FindFirstChild("meteorite for psl")return meteorite and meteorite:FindFirstChild("orb") or nil end)return ok and res or nil end
+
+-- Magic zones resolvers
+local function resolveMagicPart()local ok,res=pcall(function()local child=workspace:GetChildren()[136]return child and child:FindFirstChild("Part") or nil end)return ok and res or nil end
+local function resolveMagic15()local ok,res=pcall(function()local ti=workspace:FindFirstChild("TrainingInterface");local mag=ti and ti:FindFirstChild("Magic")return mag and mag:FindFirstChild("15") or nil end)return ok and res or nil end
+local function resolveMagic14()local ok,res=pcall(function()local ti=workspace:FindFirstChild("TrainingInterface");local mag=ti and ti:FindFirstChild("Magic")return mag and mag:FindFirstChild("14") or nil end)return ok and res or nil end
+local function resolveMagic13()local ok,res=pcall(function()local ti=workspace:FindFirstChild("TrainingInterface");local mag=ti and ti:FindFirstChild("Magic")return mag and mag:FindFirstChild("13") or nil end)return ok and res or nil end
+local function resolveMagic12()local ok,res=pcall(function()local ti=workspace:FindFirstChild("TrainingInterface");local mag=ti and ti:FindFirstChild("Magic")return mag and mag:FindFirstChild("12") or nil end)return ok and res or nil end
+
+-- Psychic zones resolvers
+local function resolvePsychicTree()local ok,res=pcall(function()local gm=workspace:FindFirstChild("GameMap");local ug=gm and gm:FindFirstChild("Underground");local c=ug and ug:FindFirstChild("R237G234B234");local child5=c and c:GetChildren()[5];local mdl=child5 and child5:FindFirstChild("Model");local tree=mdl and mdl:FindFirstChild("Tree3")return tree and tree:FindFirstChild("Trunk") or nil end)return ok and res or nil end
+local function resolvePsychic28()local ok,res=pcall(function()local ti=workspace:FindFirstChild("TrainingInterface");local psy=ti and ti:FindFirstChild("Psychics")return psy and psy:FindFirstChild("28") or nil end)return ok and res or nil end
+local function resolvePsychic27()local ok,res=pcall(function()local ti=workspace:FindFirstChild("TrainingInterface");local psy=ti and ti:FindFirstChild("Psychics")return psy and psy:FindFirstChild("27") or nil end)return ok and res or nil end
+local function resolvePsychic24()local ok,res=pcall(function()local ti=workspace:FindFirstChild("TrainingInterface");local psy=ti and ti:FindFirstChild("Psychics")return psy and psy:FindFirstChild("24") or nil end)return ok and res or nil end
+local function resolvePsychic23()local ok,res=pcall(function()local ti=workspace:FindFirstChild("TrainingInterface");local psy=ti and ti:FindFirstChild("Psychics")return psy and psy:FindFirstChild("23") or nil end)return ok and res or nil end
+local function resolvePsychic22()local ok,res=pcall(function()local ti=workspace:FindFirstChild("TrainingInterface");local psy=ti and ti:FindFirstChild("Psychics")return psy and psy:FindFirstChild("22") or nil end)return ok and res or nil end
+
+-- Best area teleports
+local function bestDefenseTeleport()local statsFolder=RS:WaitForChild("Data"):WaitForChild(LP.Name):WaitForChild("Stats");local v=statsFolder and statsFolder:FindFirstChild("Defense") and statsFolder.Defense.Value or 0
+	local zones={{req=1e20,getter=resolveHeavensDoorPart},{req=1e19,getter=resolveUndergroundQDoorPart},{req=1e18,getter=resolveIceCrystalPart},{req=1e17,getter=resolveCatacombsCityPart},{req=1e16,getter=resolveHellMapUnion}}
+	for _,z in ipairs(zones)do if v>=z.req then local inst=z.getter();if inst then tpTo(inst) return end end end
+end
+local function bestPowerTeleport()local statsFolder=RS:WaitForChild("Data"):WaitForChild(LP.Name):WaitForChild("Stats");local v=statsFolder and statsFolder:FindFirstChild("Power") and statsFolder.Power.Value or 0
+	local zones={{req=1e20,getter=resolveFireCrystalPart},{req=1e19,getter=resolvePower30},{req=1e18,getter=resolveHellMapPower},{req=1e17,getter=resolvePower28},{req=1e16,getter=resolveMeteoriteOrb}}
+	for _,z in ipairs(zones)do if v>=z.req then local inst=z.getter();if inst then tpTo(inst) return end end end
+end
+local function bestMagicTeleport()local statsFolder=RS:WaitForChild("Data"):WaitForChild(LP.Name):WaitForChild("Stats");local v=statsFolder and statsFolder:FindFirstChild("Magic") and statsFolder.Magic.Value or 0
+	local zones={{req=1e20,getter=resolveMagicPart},{req=1e19,getter=resolveMagic15},{req=1e18,getter=resolveMagic14},{req=1e17,getter=resolveMagic13},{req=5e15,getter=resolveMagic12}}
+	for _,z in ipairs(zones)do if v>=z.req then local inst=z.getter();if inst then tpTo(inst) return end end end
+end
+local function bestPsychicTeleport()local statsFolder=RS:WaitForChild("Data"):WaitForChild(LP.Name):WaitForChild("Stats");local v=statsFolder and statsFolder:FindFirstChild("Psychics") and statsFolder.Psychics.Value or 0
+	local zones={{req=1e20,getter=resolvePsychicTree},{req=1e19,getter=resolvePsychic28},{req=1e18,getter=resolvePsychic27},{req=1e17,getter=resolvePsychic24},{req=5e16,getter=resolvePsychic23},{req=5e15,getter=resolvePsychic22}}
+	for _,z in ipairs(zones)do if v>=z.req then local inst=z.getter();if inst then tpTo(inst) return end end end
 end
 
-local function resolveUndergroundQDoorPart()
-	local ok, res = pcall(function()
-		local gm = workspace:FindFirstChild("GameMap")
-		local ug = gm and gm:FindFirstChild("Underground")
-		local c = ug and ug:FindFirstChild("R237G234B234")
-		local qd = c and c:FindFirstChild("? Door")
-		local mdl = qd and qd:FindFirstChild("Model")
-		return mdl and mdl:GetChildren()[2] or nil
-	end)
-	return ok and res or nil
-end
-
-local function resolveIceCrystalPart()
-	local ok, res = pcall(function()
-		local child = workspace:GetChildren()[95]
-		local ic = child and child:FindFirstChild("Ice Crystal")
-		return ic and ic:GetChildren()[2] or nil
-	end)
-	return ok and res or nil
-end
-
-local function resolveCatacombsCityPart()
-	local ok, res = pcall(function()
-		local city = workspace:FindFirstChild("CatacombsCity")
-		return city and city:GetChildren()[3074] or nil
-	end)
-	return ok and res or nil
-end
-
-local function resolveHellMapUnion()
-	local ok, res = pcall(function()
-		local hm = workspace:FindFirstChild("HellMap")
-		return hm and hm:FindFirstChild("Union") or nil
-	end)
-	return ok and res or nil
-end
-
--- Power zones
-local function resolveFireCrystalPart()
-	local ok, res = pcall(function()
-		local child = workspace:GetChildren()[117]
-		local child7 = child and child:GetChildren()[7]
-		local mdl = child7 and child7:FindFirstChild("Model")
-		local mdl2 = mdl and mdl:FindFirstChild("Model")
-		local fc = mdl2 and mdl2:FindFirstChild("Fire Crystal")
-		return fc and fc:GetChildren()[2] or nil
-	end)
-	return ok and res or nil
-end
-
-local function resolvePower30()
-	local ok, res = pcall(function()
-		local ti = workspace:FindFirstChild("TrainingInterface")
-		local pwr = ti and ti:FindFirstChild("Power")
-		return pwr and pwr:FindFirstChild("30") or nil
-	end)
-	return ok and res or nil
-end
-
-local function resolveHellMapPower()
-	local ok, res = pcall(function()
-		local hm = workspace:FindFirstChild("HellMap")
-		return hm and hm:GetChildren()[2729] or nil
-	end)
-	return ok and res or nil
-end
-
-local function resolvePower28()
-	local ok, res = pcall(function()
-		local ti = workspace:FindFirstChild("TrainingInterface")
-		local pwr = ti and ti:FindFirstChild("Power")
-		return pwr and pwr:FindFirstChild("28") or nil
-	end)
-	return ok and res or nil
-end
-
-local function resolveMeteoriteOrb()
-	local ok, res = pcall(function()
-		local meteorite = workspace:FindFirstChild("meteorite for psl")
-		return meteorite and meteorite:FindFirstChild("orb") or nil
-	end)
-	return ok and res or nil
-end
-
--- Magic zones
-local function resolveMagicPart()
-	local ok, res = pcall(function()
-		local child = workspace:GetChildren()[136]
-		return child and child:FindFirstChild("Part") or nil
-	end)
-	return ok and res or nil
-end
-
-local function resolveMagic15()
-	local ok, res = pcall(function()
-		local ti = workspace:FindFirstChild("TrainingInterface")
-		local mag = ti and ti:FindFirstChild("Magic")
-		return mag and mag:FindFirstChild("15") or nil
-	end)
-	return ok and res or nil
-end
-
-local function resolveMagic14()
-	local ok, res = pcall(function()
-		local ti = workspace:FindFirstChild("TrainingInterface")
-		local mag = ti and ti:FindFirstChild("Magic")
-		return mag and mag:FindFirstChild("14") or nil
-	end)
-	return ok and res or nil
-end
-
-local function resolveMagic13()
-	local ok, res = pcall(function()
-		local ti = workspace:FindFirstChild("TrainingInterface")
-		local mag = ti and ti:FindFirstChild("Magic")
-		return mag and mag:FindFirstChild("13") or nil
-	end)
-	return ok and res or nil
-end
-
-local function resolveMagic12()
-	local ok, res = pcall(function()
-		local ti = workspace:FindFirstChild("TrainingInterface")
-		local mag = ti and ti:FindFirstChild("Magic")
-		return mag and mag:FindFirstChild("12") or nil
-	end)
-	return ok and res or nil
-end
-
--- Psychic zones
-local function resolvePsychicTree()
-	local ok, res = pcall(function()
-		local gm = workspace:FindFirstChild("GameMap")
-		local ug = gm and gm:FindFirstChild("Underground")
-		local c = ug and ug:FindFirstChild("R237G234B234")
-		local child5 = c and c:GetChildren()[5]
-		local mdl = child5 and child5:FindFirstChild("Model")
-		local tree = mdl and mdl:FindFirstChild("Tree3")
-		return tree and tree:FindFirstChild("Trunk") or nil
-	end)
-	return ok and res or nil
-end
-
-local function resolvePsychic28()
-	local ok, res = pcall(function()
-		local ti = workspace:FindFirstChild("TrainingInterface")
-		local psy = ti and ti:FindFirstChild("Psychics")
-		return psy and psy:FindFirstChild("28") or nil
-	end)
-	return ok and res or nil
-end
-
-local function resolvePsychic27()
-	local ok, res = pcall(function()
-		local ti = workspace:FindFirstChild("TrainingInterface")
-		local psy = ti and ti:FindFirstChild("Psychics")
-		return psy and psy:FindFirstChild("27") or nil
-	end)
-	return ok and res or nil
-end
-
-local function resolvePsychic24()
-	local ok, res = pcall(function()
-		local ti = workspace:FindFirstChild("TrainingInterface")
-		local psy = ti and ti:FindFirstChild("Psychics")
-		return psy and psy:FindFirstChild("24") or nil
-	end)
-	return ok and res or nil
-end
-
-local function resolvePsychic23()
-	local ok, res = pcall(function()
-		local ti = workspace:FindFirstChild("TrainingInterface")
-		local psy = ti and ti:FindFirstChild("Psychics")
-		return psy and psy:FindFirstChild("23") or nil
-	end)
-	return ok and res or nil
-end
-
-local function resolvePsychic22()
-	local ok, res = pcall(function()
-		local ti = workspace:FindFirstChild("TrainingInterface")
-		local psy = ti and ti:FindFirstChild("Psychics")
-		return psy and psy:FindFirstChild("22") or nil
-	end)
-	return ok and res or nil
-end
-
--- Teleport functions
-local function bestDefenseTeleport()
-	local statsFolder = RS:WaitForChild("Data"):WaitForChild(LP.Name):WaitForChild("Stats")
-	local defenseValue = statsFolder and statsFolder:FindFirstChild("Defense") and statsFolder.Defense.Value or 0
-
-	local zones = {
-		{ req = 1e20, getter = resolveHeavensDoorPart },      -- 100qn
-		{ req = 1e19, getter = resolveUndergroundQDoorPart }, -- 10qn
-		{ req = 1e18, getter = resolveIceCrystalPart },       -- 1qn
-		{ req = 1e17, getter = resolveCatacombsCityPart },    -- 100qd
-		{ req = 1e16, getter = resolveHellMapUnion },         -- 10qd
-	}
-
-	for _, z in ipairs(zones) do
-		if defenseValue >= z.req then
-			local inst = z.getter()
-			if inst then
-				tpTo(inst)
-				return
-			end
-		end
-	end
-end
-
-local function bestPowerTeleport()
-	local statsFolder = RS:WaitForChild("Data"):WaitForChild(LP.Name):WaitForChild("Stats")
-	local powerValue = statsFolder and statsFolder:FindFirstChild("Power") and statsFolder.Power.Value or 0
-
-	local zones = {
-		{ req = 1e20, getter = resolveFireCrystalPart }, -- 100qn
-		{ req = 1e19, getter = resolvePower30 },         -- 10qn
-		{ req = 1e18, getter = resolveHellMapPower },     -- 1qn
-		{ req = 1e17, getter = resolvePower28 },          -- 100qd
-		{ req = 1e16, getter = resolveMeteoriteOrb },     -- 10qd
-	}
-
-	for _, z in ipairs(zones) do
-		if powerValue >= z.req then
-			local inst = z.getter()
-			if inst then
-				tpTo(inst)
-				return
-			end
-		end
-	end
-end
-
-local function bestMagicTeleport()
-	local statsFolder = RS:WaitForChild("Data"):WaitForChild(LP.Name):WaitForChild("Stats")
-	local magicValue = statsFolder and statsFolder:FindFirstChild("Magic") and statsFolder.Magic.Value or 0
-
-	local zones = {
-		{ req = 1e20, getter = resolveMagicPart }, -- 100qn
-		{ req = 1e19, getter = resolveMagic15 },   -- 10qn
-		{ req = 1e18, getter = resolveMagic14 },   -- 1qn
-		{ req = 1e17, getter = resolveMagic13 },   -- 100qd
-		{ req = 5e15, getter = resolveMagic12 },   -- 5qd
-	}
-
-	for _, z in ipairs(zones) do
-		if magicValue >= z.req then
-			local inst = z.getter()
-			if inst then
-				tpTo(inst)
-				return
-			end
-		end
-	end
-end
-
-local function bestPsychicTeleport()
-	local statsFolder = RS:WaitForChild("Data"):WaitForChild(LP.Name):WaitForChild("Stats")
-	local psychicValue = statsFolder and statsFolder:FindFirstChild("Psychics") and statsFolder.Psychics.Value or 0
-
-	local zones = {
-		{ req = 1e20, getter = resolvePsychicTree }, -- 100qn
-		{ req = 1e19, getter = resolvePsychic28 },   -- 10qn
-		{ req = 1e18, getter = resolvePsychic27 },   -- 1qn
-		{ req = 1e17, getter = resolvePsychic24 },  -- 100qd
-		{ req = 5e16, getter = resolvePsychic23 },   -- 50qd
-		{ req = 5e15, getter = resolvePsychic22 },  -- 5qd
-	}
-
-	for _, z in ipairs(zones) do
-		if psychicValue >= z.req then
-			local inst = z.getter()
-			if inst then
-				tpTo(inst)
-				return
-			end
-		end
-	end
-end
-
--- Buttons
-Btn(RC,'Defense', function()
-	pcall(bestDefenseTeleport)
-end)
-
-Btn(RC,'Power', function()
-	pcall(bestPowerTeleport)
-end)
-
-Btn(RC,'Magic', function()
-	pcall(bestMagicTeleport)
-end)
-
-Btn(RC,'Psychic', function()
-	pcall(bestPsychicTeleport)
-end)
+Btn(RC,'Defense',function()pcall(bestDefenseTeleport)end)
+Btn(RC,'Power',function()pcall(bestPowerTeleport)end)
+Btn(RC,'Magic',function()pcall(bestMagicTeleport)end)
+Btn(RC,'Psychic',function()pcall(bestPsychicTeleport)end)
 
 title(LC,'Exotics')
 addTp(LC,{'Pads','ExoticStore','1'},'Exotic Store')
@@ -753,486 +548,420 @@ local function TUltimate(on)cfg.UltimateAFKOptimization=on;save()
 	S.conn=workspace.DescendantAdded:Connect(simple);S.applied=true
 end
 
+-- Mob name mapping for selection
+local BUCKET_NAME = {
+	["1"]="Goblin",["2"]="Thug",["3"]="Gym Rat",["4"]="Veteran",["5"]="Yakuza",
+	["6"]="Mutant",["7"]="Samurai",["8"]="Ninja",["9"]="Animatronic",
+	["10"]="Catacombs Guard",["11"]="Catacombs Guard",["12"]="Catacombs Guard",
+	["13"]="Demon",["14"]="The Judger",["15"]="Dominator",["16"]="Arena",["17"]="The Emperor",
+	["18"]="Ancient Gladiator",["19"]="Old Knight",
+}
+local function bucketOf(inst)local root=workspace:FindFirstChild("Enemies");if not root then return nil end;local node=inst
+	while node and node~=root do if node.Parent==root and tonumber(node.Name)~=nil then return node end node=node.Parent end
+	return nil end
+local function getMobDisplayName(model)
+	local b=bucketOf(model);local id=b and b.Name or nil
+	if id and BUCKET_NAME[id] and BUCKET_NAME[id]~="" then return BUCKET_NAME[id] end
+	local hum=model:FindFirstChildOfClass("Humanoid")
+	if hum and hum.DisplayName and hum.DisplayName~="" then return hum.DisplayName end
+	for _,a in ipairs({"EnemyName","DisplayName","NameOverride","MobType","Type"}) do local v=model:GetAttribute(a);if v and tostring(v)~="" then return tostring(v) end end
+	return model.Name
+end
+local function uniqueMobNames()local seen, list = {}, {}
+	for _,name in pairs(BUCKET_NAME) do if name and name~="" and not seen[name] then seen[name]=true;table.insert(list,name) end end
+	table.sort(list);return list
+end
+local function isMobSelected(name)return cfg.UFASelectedMobs and cfg.UFASelectedMobs[name]==true end
+
+-- Player ESP (old visuals) with robust cleanup to prevent stuck overlays
 local function TPlayerESP(on)
-	getgenv().PlayerESP = on
+	cfg.PlayerESP = on
 	if not Drawing then return end
 
-	-- disconnect old loop if any
-	if getgenv().__PESP then
-		getgenv().__PESP:Disconnect()
-		getgenv().__PESP = nil
+	getgenv().__PESP = getgenv().__PESP or {conn=nil, wd=nil, records={}}
+	local S = getgenv().__PESP
+
+	local function rm(rec)
+		if not rec then return end
+		pcall(function() if rec.b then rec.b:Remove() end end)
+		pcall(function() if rec.t then rec.t:Remove() end end)
+		pcall(function() if rec.clan then rec.clan:Remove() end end)
+		pcall(function() if rec.health then rec.health:Remove() end end)
+		pcall(function() if rec.defense then rec.defense:Remove() end end)
+		pcall(function() if rec.power then rec.power:Remove() end end)
+		pcall(function() if rec.magic then rec.magic:Remove() end end)
+		pcall(function() if rec.rep then rec.rep:Remove() end end)
+	end
+	local function clearAll()
+		if S.conn then pcall(function() S.conn:Disconnect() end) S.conn=nil end
+		if S.wd then pcall(function() S.wd:Disconnect() end) S.wd=nil end
+		for k,rec in pairs(S.records) do rm(rec) S.records[k]=nil end
 	end
 
-	local boxes = {}
+	if not on then
+		clearAll()
+		return
+	end
+
+	-- re-enable: hard clear any leftovers first
+	clearAll()
 
 	local function formatNumber(num)
 		local absNum = math.abs(num)
-		if absNum == 0 then
-			return "Concealed"
-		elseif absNum >= 1e18 then
-			return string.format("%.2fQn", num/1e18)
-		elseif absNum >= 1e15 then
-			return string.format("%.2fQd", num/1e15)
-		elseif absNum >= 1e12 then
-			return string.format("%.2fT", num/1e12)
-		elseif absNum >= 1e9 then
-			return string.format("%.2fB", num/1e9)
-		elseif absNum >= 1e6 then
-			return string.format("%.2fM", num/1e6)
-		elseif absNum >= 1e3 then
-			return string.format("%.2fK", num/1e3)
-		else
-			return tostring(num)
-		end
+		if absNum == 0 then return "Concealed"
+		elseif absNum >= 1e18 then return string.format("%.2fQn", num/1e18)
+		elseif absNum >= 1e15 then return string.format("%.2fQd", num/1e15)
+		elseif absNum >= 1e12 then return string.format("%.2fT",  num/1e12)
+		elseif absNum >= 1e9  then return string.format("%.2fB",  num/1e9)
+		elseif absNum >= 1e6  then return string.format("%.2fM",  num/1e6)
+		elseif absNum >= 1e3  then return string.format("%.2fK",  num/1e3)
+		else return tostring(num) end
 	end
 
 	local function getPlayerStats(player)
-		local success, statsFolder = pcall(function()
-			return game:GetService("ReplicatedStorage").Data[player.Name].Stats
-		end)
-		if success and statsFolder then
-			local defense = statsFolder:FindFirstChild('Defense')
-			local power = statsFolder:FindFirstChild('Power')
-			local magic = statsFolder:FindFirstChild('Magic')
-			local reputation = statsFolder:FindFirstChild('Reputation')
-			local defenseValue = defense and defense.Value or 0
-			local powerValue = power and power.Value or 0
-			local magicValue = magic and magic.Value or 0
-			local repValue = reputation and reputation.Value or 0
-			return defenseValue, powerValue, magicValue, repValue
+		local ok, statsFolder = pcall(function() return RS.Data[player.Name].Stats end)
+		if ok and statsFolder then
+			local d = statsFolder:FindFirstChild('Defense')
+			local p = statsFolder:FindFirstChild('Power')
+			local m = statsFolder:FindFirstChild('Magic')
+			local r = statsFolder:FindFirstChild('Reputation')
+			return d and d.Value or 0, p and p.Value or 0, m and m.Value or 0, r and r.Value or 0
 		end
-		return 0, 0, 0, 0
+		return 0,0,0,0
 	end
 
 	local function getPlayerClan(player)
-		local success, statsFolder = pcall(function()
-			return game:GetService("ReplicatedStorage").Data[player.Name].Stats
-		end)
-		if success and statsFolder then
+		local ok, statsFolder = pcall(function() return RS.Data[player.Name].Stats end)
+		if ok and statsFolder then
 			local clanJoined = statsFolder:FindFirstChild('ClanJoined')
 			if clanJoined then
 				local clanId = clanJoined.Value
-				-- Clan mapping
-				local clanNames = {
-					[6440] = "Calamity2",
-					[7] = "Calamity", 
-					[11] = "YTPvP",
-					[3704] = "YTPvP2",
-					[4588] = "YTpvP3"
-				}
-				local clanColors = {
-					[6440] = Color3.fromRGB(0, 255, 0), -- Green
-					[7] = Color3.fromRGB(0, 255, 0),     -- Green
-					[11] = Color3.fromRGB(255, 0, 0),    -- Red
-					[3704] = Color3.fromRGB(255, 0, 0),  -- Red
-					[4588] = Color3.fromRGB(255, 0, 0)   -- Red
-				}
+				local clanNames = {[6440]="Calamity2",[7]="Calamity",[11]="YTPvP",[3704]="YTPvP2",[4588]="YTpvP3"}
+				local clanColors = {[6440]=Color3.fromRGB(0,255,0),[7]=Color3.fromRGB(0,255,0),[11]=Color3.fromRGB(255,0,0),[3704]=Color3.fromRGB(255,0,0),[4588]=Color3.fromRGB(255,0,0)}
 				return clanNames[clanId], clanColors[clanId]
 			end
 		end
-		return nil, nil
+		return nil,nil
 	end
 
 	local function getPlayerHealth(player)
 		local char = player.Character
-		local humanoid = char and char:FindFirstChild("Humanoid")
-		if humanoid then
-			return humanoid.Health, humanoid.MaxHealth
-		end
-		return 0, 0
+		local humanoid = char and char:FindFirstChildOfClass("Humanoid")
+		if humanoid then return humanoid.Health, humanoid.MaxHealth end
+		return 0,0
 	end
 
-	local function getRepColor(repValue)
-		if repValue <= -25000 then
-			return Color3.fromRGB(0, 0, 0)
-		elseif repValue <= -10000 then
-			return Color3.fromRGB(139, 0, 0)
-		elseif repValue <= -4000 then
-			return Color3.fromRGB(128, 0, 128)
-		elseif repValue <= -1 then
-			return Color3.fromRGB(255, 100, 100)
-		elseif repValue == 0 then
-			return Color3.fromRGB(255, 255, 255)
-		elseif repValue >= 1 and repValue < 4000 then
-			return Color3.fromRGB(0, 255, 0)
-		elseif repValue >= 4000 and repValue < 10000 then
-			return Color3.fromRGB(64, 224, 208)
-		elseif repValue >= 10000 and repValue < 25000 then
-			return Color3.fromRGB(173, 216, 230)
-		else
-			return Color3.fromRGB(255, 255, 0)
-		end
+	local function getRepColor(v)
+		if v<=-25000 then return Color3.fromRGB(0,0,0)
+		elseif v<=-10000 then return Color3.fromRGB(139,0,0)
+		elseif v<=-4000 then return Color3.fromRGB(128,0,128)
+		elseif v<=-1 then return Color3.fromRGB(255,100,100)
+		elseif v==0 then return Color3.fromRGB(255,255,255)
+		elseif v<4000 then return Color3.fromRGB(0,255,0)
+		elseif v<10000 then return Color3.fromRGB(64,224,208)
+		elseif v<25000 then return Color3.fromRGB(173,216,230)
+		else return Color3.fromRGB(255,255,0) end
 	end
 
-	local function mkb(p)
+	local function mkRec()
 		local b = Drawing.new('Square'); b.Filled=false; b.Thickness=2; b.Visible=false
 		local t = Drawing.new('Text'); t.Size=24; t.Center=true; t.Outline=true; t.OutlineColor=Color3.new(0,0,0); t.Visible=false
-		local clanText = Drawing.new('Text'); clanText.Size=20; clanText.Center=true; clanText.Outline=true; clanText.OutlineColor=Color3.new(0,0,0); clanText.Visible=false
-		local healthText = Drawing.new('Text'); healthText.Size=22; healthText.Center=true; healthText.Outline=true; healthText.OutlineColor=Color3.new(0,0,0); healthText.Color=Color3.fromRGB(100,255,100); healthText.Visible=false
-		local defenseText = Drawing.new('Text'); defenseText.Size=20; defenseText.Center=true; defenseText.Outline=true; defenseText.OutlineColor=Color3.new(0,0,0); defenseText.Color=Color3.fromRGB(0,150,255); defenseText.Visible=false
-		local powerText = Drawing.new('Text'); powerText.Size=20; powerText.Center=true; powerText.Outline=true; powerText.OutlineColor=Color3.new(0,0,0); powerText.Color=Color3.fromRGB(255,50,50); powerText.Visible=false
-		local magicText = Drawing.new('Text'); magicText.Size=20; magicText.Center=true; magicText.Outline=true; magicText.OutlineColor=Color3.new(0,0,0); magicText.Color=Color3.fromRGB(255,100,255); magicText.Visible=false
-		local repText = Drawing.new('Text'); repText.Size=20; repText.Center=true; repText.Outline=true; repText.OutlineColor=Color3.new(0,0,0); repText.Color=Color3.fromRGB(255,255,255); repText.Visible=false
-		boxes[p] = { b=b, t=t, clan=clanText, health=healthText, defense=defenseText, power=powerText, magic=magicText, rep=repText }
+		local clan = Drawing.new('Text'); clan.Size=20; clan.Center=true; clan.Outline=true; clan.OutlineColor=Color3.new(0,0,0); clan.Visible=false
+		local health = Drawing.new('Text'); health.Size=22; health.Center=true; health.Outline=true; health.OutlineColor=Color3.new(0,0,0); health.Color=Color3.fromRGB(100,255,100); health.Visible=false
+		local defense = Drawing.new('Text'); defense.Size=20; defense.Center=true; defense.Outline=true; defense.OutlineColor=Color3.new(0,0,0); defense.Color=Color3.fromRGB(0,150,255); defense.Visible=false
+		local power = Drawing.new('Text'); power.Size=20; power.Center=true; power.Outline=true; power.OutlineColor=Color3.new(0,0,0); power.Color=Color3.fromRGB(255,50,50); power.Visible=false
+		local magic = Drawing.new('Text'); magic.Size=20; magic.Center=true; magic.Outline=true; magic.OutlineColor=Color3.new(0,0,0); magic.Color=Color3.fromRGB(255,100,255); magic.Visible=false
+		local rep = Drawing.new('Text'); rep.Size=20; rep.Center=true; rep.Outline=true; rep.OutlineColor=Color3.new(0,0,0); rep.Color=Color3.fromRGB(255,255,255); rep.Visible=false
+		return {b=b,t=t,clan=clan,health=health,defense=defense,power=power,magic=magic,rep=rep}
 	end
 
-	local function rm(p)
-		local e = boxes[p]; if not e then return end
-		pcall(function()
-			e.b:Remove(); e.t:Remove(); e.clan:Remove(); e.health:Remove(); e.defense:Remove(); e.power:Remove(); e.magic:Remove(); e.rep:Remove()
+	local function ensure(plr)
+		if S.records[plr] then return S.records[plr] end
+		local rec = mkRec()
+		S.records[plr] = rec
+		return rec
+	end
+
+	-- Clean on player remove
+	if not S._pr then
+		S._pr = P.PlayerRemoving:Connect(function(plr)
+			local rec = S.records[plr]
+			if rec then rm(rec) S.records[plr]=nil end
 		end)
-		boxes[p] = nil
 	end
 
-	if on then
-		getgenv().__PESP = game:GetService('RunService').RenderStepped:Connect(function()
-			if not getgenv().PlayerESP then
-				for p2 in pairs(boxes) do rm(p2) end
-				boxes = {}
-				return
+	-- Watchdog to purge orphans each step
+	S.wd = R.Stepped:Connect(function()
+		for plr,rec in pairs(S.records) do
+			if typeof(plr) ~= "Instance" or not plr:IsDescendantOf(game) then
+				rm(rec) S.records[plr]=nil
 			end
+		end
+	end)
 
-			for _, p in ipairs(game:GetService('Players'):GetPlayers()) do
-				if p ~= LP and p.Character and p.Character:FindFirstChild('Head') then
-					if not boxes[p] then mkb(p) end
-					local e = boxes[p]
-					local head = p.Character.Head
+	S.conn = R.RenderStepped:Connect(function()
+		if not cfg.PlayerESP then
+			clearAll()
+			return
+		end
+
+		for _,pl in ipairs(P:GetPlayers()) do
+			if pl ~= LP then
+				local char = pl.Character
+				local head = char and char:FindFirstChild('Head')
+				local hum = char and char:FindFirstChildOfClass('Humanoid')
+				local rec = ensure(pl)
+				if head and hum and hum.Health > 0 then
 					local pos, vis = Cam:WorldToViewportPoint(head.Position)
-					if not vis then
-						e.b.Visible=false; e.t.Visible=false; e.clan.Visible=false
-						e.health.Visible=false; e.defense.Visible=false; e.power.Visible=false; e.magic.Visible=false; e.rep.Visible=false
-					else
+					if vis then
 						local d = (Cam.CFrame.Position - head.Position).Magnitude
-						local sz = math.clamp((100 / math.max(d,1)) * 100, 20, 80)
-						local col = Color3.fromHSV((tick() * 0.2) % 1, 1, 1)
+						local sz = math.clamp((100/math.max(d,1))*100, 20, 80)
+						local col = Color3.fromHSV((tick()*0.2)%1, 1, 1)
 						local boxPos = Vector2.new(pos.X - sz/2, pos.Y - sz/2)
 
-						e.b.Position = boxPos
-						e.b.Size = Vector2.new(sz, sz)
-						e.b.Color = col
-						e.b.Visible = true
+						rec.b.Position = boxPos
+						rec.b.Size = Vector2.new(sz, sz)
+						rec.b.Color = col
+						rec.b.Visible = true
 
-						-- Get clan info
-						local clanName, clanColor = getPlayerClan(p)
+						local clanName, clanColor = getPlayerClan(pl)
+						rec.t.Text = pl.Name
+						rec.t.Position = Vector2.new(pos.X, pos.Y - sz/2 - 18)
+						rec.t.Color = col
+						rec.t.Visible = true
 
-						e.t.Text = p.Name
-						e.t.Position = Vector2.new(pos.X, pos.Y - sz/2 - 18)
-						e.t.Color = col
-						e.t.Visible = true
-
-						-- Show clan text above player name if clan exists
 						if clanName then
-							e.clan.Text = clanName
-							e.clan.Position = Vector2.new(pos.X, pos.Y - sz/2 - 40)
-							e.clan.Color = clanColor
-							e.clan.Visible = true
+							rec.clan.Text = clanName
+							rec.clan.Position = Vector2.new(pos.X, pos.Y - sz/2 - 40)
+							rec.clan.Color = clanColor
+							rec.clan.Visible = true
 						else
-							e.clan.Visible = false
+							rec.clan.Visible = false
 						end
 
-						-- Always show health and all stats
-						local currentHealth, maxHealth = getPlayerHealth(p)
-						local defenseValue, powerValue, magicValue, repValue = getPlayerStats(p)
+						local ch, mh = getPlayerHealth(pl)
+						local defv, powv, magv, repv = getPlayerStats(pl)
+						local combined = defv + magv + powv
+						local low = combined < 1e17
 
-						e.health.Text = formatNumber(currentHealth) .. "/" .. formatNumber(maxHealth)
-						e.health.Position = Vector2.new(pos.X, boxPos.Y + sz/2 + 16)
-						e.health.Visible = true
+						if low then
+							rec.health.Visible=false; rec.defense.Visible=false; rec.power.Visible=false; rec.magic.Visible=false
+							rec.rep.Text =(repv==0) and "0" or formatNumber(repv)
+							rec.rep.Color = getRepColor(repv)
+							rec.rep.Position = Vector2.new(pos.X, boxPos.Y + sz/2 + 16)
+							rec.rep.Visible = true
+						else
+							rec.health.Text = formatNumber(ch).."/"..formatNumber(mh)
+							rec.health.Position = Vector2.new(pos.X, boxPos.Y + sz/2 + 16)
+							rec.health.Visible = true
 
-						e.defense.Text = formatNumber(defenseValue)
-						e.defense.Position = Vector2.new(pos.X, boxPos.Y + sz/2 + 38)
-						e.defense.Visible = true
+							rec.defense.Text = formatNumber(defv)
+							rec.defense.Position = Vector2.new(pos.X, boxPos.Y + sz/2 + 38)
+							rec.defense.Visible = true
 
-						e.power.Text = formatNumber(powerValue)
-						e.power.Position = Vector2.new(pos.X, boxPos.Y + sz/2 + 60)
-						e.power.Visible = true
+							rec.power.Text = formatNumber(powv)
+							rec.power.Position = Vector2.new(pos.X, boxPos.Y + sz/2 + 60)
+							rec.power.Visible = true
 
-						e.magic.Text = formatNumber(magicValue)
-						e.magic.Position = Vector2.new(pos.X, boxPos.Y + sz/2 + 82)
-						e.magic.Visible = true
+							rec.magic.Text = formatNumber(magv)
+							rec.magic.Position = Vector2.new(pos.X, boxPos.Y + sz/2 + 82)
+							rec.magic.Visible = true
 
-						-- Rep always shows; 0 should be "0" (not "Concealed")
-						e.rep.Text = (repValue == 0) and "0" or formatNumber(repValue)
-						e.rep.Color = getRepColor(repValue)
-						e.rep.Position = Vector2.new(pos.X, boxPos.Y + sz/2 + 104)
-						e.rep.Visible = true
+							rec.rep.Text =(repv==0) and "0" or formatNumber(repv)
+							rec.rep.Color = getRepColor(repv)
+							rec.rep.Position = Vector2.new(pos.X, boxPos.Y + sz/2 + 104)
+							rec.rep.Visible = true
+						end
+					else
+						rec.b.Visible=false; rec.t.Visible=false; rec.clan.Visible=false
+						rec.health.Visible=false; rec.defense.Visible=false; rec.power.Visible=false; rec.magic.Visible=false; rec.rep.Visible=false
 					end
-				end
-
-				for p2 in pairs(boxes) do
-					if (not p2) or (not p2.Character) or (not p2.Character:FindFirstChild('Head')) then
-						rm(p2)
-					end
+				else
+					rec.b.Visible=false; rec.t.Visible=false; rec.clan.Visible=false
+					rec.health.Visible=false; rec.defense.Visible=false; rec.power.Visible=false; rec.magic.Visible=false; rec.rep.Visible=false
 				end
 			end
-		end)
-	else
-		for p2 in pairs(boxes) do rm(p2) end
-		boxes = {}
-	end
+		end
+	end)
 end
 
+LP.CharacterAdded:Connect(function()
+	task.wait(0.5)
+	TPlayerESP(cfg.PlayerESP)
+end)
+
+-- Full Mob ESP (boxes + names; smaller visuals; uses BUCKET_NAME/getMobDisplayName)
 local function TMobESP(on)
-    if on then
-        -- Enemy ESP (boxes + correct names; Catacombs Guards share one color)
-        -- Highlights all NPCs under workspace.Enemies["1".."n"] through walls.
-        
-        local Players = game:GetService("Players")
-        local RunService = game:GetService("RunService")
-        local LocalPlayer = Players.LocalPlayer
-        
-        -- Bucket -> Display Name
-        local BUCKET_NAME = {
-            ["1"]="Goblin", ["2"]="Thug", ["3"]="Gym Rat", ["4"]="Veteran", ["5"]="Yakuza",
-            ["6"]="Mutant", ["7"]="Samurai", ["8"]="Ninja", ["9"]="Animatronic",
-            ["10"]="Catacombs Guard", ["11"]="Catacombs Guard", ["12"]="Catacombs Guard",
-            ["13"]="Demon", ["14"]="The Judger", ["15"]="Dominator", ["16"]="?", ["17"]="The Emperor",
-            ["18"]="Ancient Gladiator", ["19"]="Old Knight",
-        }
-        
-        -- Same color for all Catacombs Guards (10,11,12)
-        local CATACOMBS_IDS = { ["10"]=true, ["11"]=true, ["12"]=true }
-        local CATACOMBS_COLOR = Color3.fromRGB(0, 255, 140)
-        
-        getgenv().EnemyESP2 = getgenv().EnemyESP2 or {}
-        local M = getgenv().EnemyESP2
-        if M.enabled then return end
-        M.enabled = false
-        M._conns = {}
-        M._records = {} -- rootModel -> {box, bill, billLabel, part, conns}
-        
-        local HOLDER = Instance.new("Folder")
-        HOLDER.Name = "EnemyESP2_Holder"
-        pcall(function() HOLDER.Parent = game:GetService("CoreGui") end)
-        if not HOLDER.Parent then
-            HOLDER.Parent = LocalPlayer:WaitForChild("PlayerGui")
-        end
-        
-        local function enemiesRoot() return workspace:FindFirstChild("Enemies") end
-        
-        local function bucketOf(inst)
-            local root = enemiesRoot()
-            if not root then return nil end
-            local node = inst
-            while node and node ~= root do
-                if node.Parent == root and tonumber(node.Name) ~= nil then
-                    return node
-                end
-                node = node.Parent
-            end
-            return nil
-        end
-        
-        local function colorForBucketName(id)
-            id = tostring(id or "")
-            if CATACOMBS_IDS[id] then
-                return CATACOMBS_COLOR
-            end
-            local n = tonumber(id) or 0
-            local hue = (n % 12) / 12
-            return Color3.fromHSV(hue, 0.85, 1)
-        end
-        
-        -- Avoid weapon/accessory parts
-        local WEAPON_HINTS = {"weapon","sword","blade","gun","bow","staff","club","knife","axe","mace","spear"}
-        local function looksLikeWeapon(name)
-            name = string.lower(tostring(name or ""))
-            for _, w in ipairs(WEAPON_HINTS) do
-                if string.find(name, w, 1, true) then return true end
-            end
-            return false
-        end
-        local function isAccessoryPart(p)
-            while p and p.Parent do
-                if p:IsA("Accessory") then return true end
-                p = p.Parent
-            end
-            return false
-        end
-        
-        local function pickBodyPart(model)
-            for _, n in ipairs({"HumanoidRootPart","UpperTorso","LowerTorso","Torso","Head"}) do
-                local p = model:FindFirstChild(n)
-                if p and p:IsA("BasePart") then return p end
-            end
-            if model.PrimaryPart and model.PrimaryPart:IsA("BasePart") then return model.PrimaryPart end
-            local best, score = nil, -1
-            for _, p in ipairs(model:GetDescendants()) do
-                if p:IsA("BasePart") and p.Parent then
-                    if not isAccessoryPart(p) and not looksLikeWeapon(p.Name) and p.Transparency < 1 then
-                        local s = p.Size; local sc = s.X*s.Y*s.Z
-                        if sc > score then best, score = p, sc end
-                    end
-                end
-            end
-            return best or model:FindFirstChildWhichIsA("BasePart", true)
-        end
-        
-        local function getDisplayName(model)
-            local b = bucketOf(model)
-            local id = b and b.Name or nil
-            if id and BUCKET_NAME[id] and BUCKET_NAME[id] ~= "" then
-                return BUCKET_NAME[id]
-            end
-            local hum = model:FindFirstChildOfClass("Humanoid")
-            if hum and hum.DisplayName and hum.DisplayName ~= "" then return hum.DisplayName end
-            for _, a in ipairs({"EnemyName","DisplayName","NameOverride","MobType","Type"}) do
-                local v = model:GetAttribute(a); if v and tostring(v) ~= "" then return tostring(v) end
-            end
-            return model.Name
-        end
-        
-        local function makeBox(part, col)
-            local box = Instance.new("BoxHandleAdornment")
-            box.Name = "EnemyESP2_Box"
-            box.ZIndex = 5
-            box.Color3 = col
-            box.AlwaysOnTop = true
-            box.Adornee = part
-            box.Transparency = 0.2
-            box.Size = part.Size + Vector3.new(0.2,0.2,0.2)
-            box.Parent = HOLDER
-            return box
-        end
-        
-        local function makeBill(part, text, col)
-            local bill = Instance.new("BillboardGui")
-            bill.Name = "EnemyESP2_Label"
-            bill.Adornee = part
-            bill.AlwaysOnTop = true
-            bill.Size = UDim2.new(0, 170, 0, 22)
-            bill.StudsOffset = Vector3.new(0, 3, 0)
-            bill.MaxDistance = 1e6
-            bill.Parent = HOLDER
-            
-            local tl = Instance.new("TextLabel")
-            tl.BackgroundTransparency = 1
-            tl.Size = UDim2.new(1, 0, 1, 0)
-            tl.Font = Enum.Font.GothamBold
-            tl.TextSize = 14
-            tl.TextColor3 = col
-            tl.TextStrokeTransparency = 0.3
-            tl.Text = text
-            tl.Parent = bill
-            return bill, tl
-        end
-        
-        local function clearRecord(model)
-            local rec = M._records[model]
-            if not rec then return end
-            for _, c in ipairs(rec.conns or {}) do pcall(function() c:Disconnect() end) end
-            if rec.box then rec.box:Destroy() end
-            if rec.bill then rec.bill:Destroy() end
-            M._records[model] = nil
-        end
-        
-        local function attachToModel(model)
-            if M._records[model] then return end
-            -- Must be under a numeric bucket and not a player character
-            if Players:GetPlayerFromCharacter(model) then return end
-            if not bucketOf(model) then return end
-            
-            local part = pickBodyPart(model); if not part then return end
-            local bucket = bucketOf(model)
-            local id = bucket.Name
-            local col = colorForBucketName(id)
-            local label = getDisplayName(model)
-            
-            local box = makeBox(part, col)
-            local bill, billLabel = makeBill(part, label, col)
-            
-            local rec = {box=box, bill=bill, billLabel=billLabel, part=part, conns={}}
-            M._records[model] = rec
-            
-            table.insert(rec.conns, part:GetPropertyChangedSignal("Size"):Connect(function()
-                if rec.box then rec.box.Size = part.Size + Vector3.new(0.2,0.2,0.2) end
-            end))
-            
-            -- If a better body part appears later (e.g., HRP spawns), retarget once
-            table.insert(rec.conns, model.DescendantAdded:Connect(function(inst)
-                if inst:IsA("BasePart") then
-                    local better = pickBodyPart(model)
-                    if better and better ~= rec.part then
-                        rec.part = better
-                        if rec.box then rec.box.Adornee = better end
-                        if rec.bill then rec.bill.Adornee = better end
-                    end
-                end
-            end))
-            
-            -- Keep name in sync if attributes/humanoid change (optional)
-            local function refreshName()
-                if rec.billLabel then rec.billLabel.Text = getDisplayName(model) end
-            end
-            local hum = model:FindFirstChildOfClass("Humanoid")
-            if hum then
-                table.insert(rec.conns, hum:GetPropertyChangedSignal("DisplayName"):Connect(refreshName))
-            end
-            for _, a in ipairs({"EnemyName","DisplayName","NameOverride","MobType","Type"}) do
-                table.insert(rec.conns, model:GetAttributeChangedSignal(a):Connect(refreshName))
-            end
-            
-            table.insert(rec.conns, model.AncestryChanged:Connect(function(_, parent)
-                if parent == nil then clearRecord(model) end
-            end))
-        end
-        
-        local function tryAttach(inst)
-            local root = enemiesRoot(); if not root then return end
-            local node = inst
-            while node and node ~= root do
-                if node:IsA("Model") and bucketOf(node) then
-                    attachToModel(node); return
-                end
-                node = node.Parent
-            end
-        end
-        
-        local function fullScan()
-            local root = enemiesRoot(); if not root then return end
-            for _, bucket in ipairs(root:GetChildren()) do
-                if tonumber(bucket.Name) ~= nil then
-                    for _, inst in ipairs(bucket:GetDescendants()) do
-                        if inst:IsA("BasePart") or inst:IsA("Model") then tryAttach(inst) end
-                    end
-                end
-            end
-        end
-        
-        function M.Disable()
-            if not M.enabled then return end
-            for _, c in ipairs(M._conns) do pcall(function() c:Disconnect() end) end
-            M._conns = {}
-            for m in pairs(M._records) do clearRecord(m) end
-            HOLDER:ClearAllChildren()
-            M.enabled = false
-            print("[EnemyESP2] disabled")
-        end
-        
-        function M.Enable()
-            if M.enabled then return end
-            M.enabled = true
-            fullScan()
-            local root = enemiesRoot()
-            if root then
-                table.insert(M._conns, root.DescendantAdded:Connect(function(inst)
-                    task.defer(function() tryAttach(inst) end)
-                end))
-                table.insert(M._conns, root.DescendantRemoving:Connect(function(inst)
-                    if inst:IsA("Model") then clearRecord(inst) end
-                end))
-            end
-            -- periodic pass for streaming
-            table.insert(M._conns, RunService.Heartbeat:Connect(function() fullScan() end))
-            print("[EnemyESP2] enabled")
-        end
-        
-        M.Enable()
-    else
-        -- Disable ESP when toggle is turned off
-        if getgenv().EnemyESP2 and getgenv().EnemyESP2.Disable then
-            getgenv().EnemyESP2:Disable()
-        end
-    end
+	getgenv().EnemyESP2 = getgenv().EnemyESP2 or {enabled=false,_conns={},_records={}}
+	local M = getgenv().EnemyESP2
+
+	local function clearRecord(rec)
+		if not rec then return end
+		for _, c in ipairs(rec.conns or {}) do pcall(function() c:Disconnect() end) end
+		if rec.box then pcall(function() rec.box:Destroy() end) end
+		if rec.bill then pcall(function() rec.bill:Destroy() end) end
+	end
+	local function disableAll()
+		for _, rec in pairs(M._records or {}) do clearRecord(rec) end
+		if M.HOLDER then pcall(function() M.HOLDER:Destroy() end) end
+		for _, c in ipairs(M._conns or {}) do pcall(function() c:Disconnect() end) end
+		M._records, M._conns, M.enabled = {}, {}, false
+	end
+	if not on then if M.enabled then disableAll() end return end
+	if M.enabled then return end
+	M.enabled, M._conns, M._records = true, {}, {}
+
+	local function ensureHolder()
+		if M.HOLDER and M.HOLDER.Parent then return end
+		local h = Instance.new("Folder")
+		h.Name = "EnemyESP2_Holder"
+		pcall(function() h.Parent = game:GetService("CoreGui") end)
+		if not h.Parent then h.Parent = LP:WaitForChild("PlayerGui") end
+		M.HOLDER = h
+	end
+	ensureHolder()
+
+	local function enemiesRoot() return workspace:FindFirstChild("Enemies") end
+
+	local CATACOMBS_IDS = { ["10"]=true, ["11"]=true, ["12"]=true }
+	local CATACOMBS_COLOR = Color3.fromRGB(0,255,140)
+	local function colorForBucketName(id)
+		id = tostring(id or "")
+		if CATACOMBS_IDS[id] then return CATACOMBS_COLOR end
+		local n = tonumber(id) or 0
+		return Color3.fromHSV((n % 12)/12, 0.85, 1)
+	end
+
+	local WEAPON_HINTS = {"weapon","sword","blade","gun","bow","staff","club","knife","axe","mace","spear"}
+	local function looksLikeWeapon(name)
+		name = string.lower(tostring(name or ""))
+		for _, w in ipairs(WEAPON_HINTS) do if string.find(name, w, 1, true) then return true end end
+		return false
+	end
+	local function isAccessoryPart(p)
+		while p and p.Parent do if p:IsA("Accessory") then return true end p = p.Parent end
+		return false
+	end
+	local function pickBodyPart(model)
+		for _, n in ipairs({"HumanoidRootPart","UpperTorso","LowerTorso","Torso","Head"}) do
+			local p = model:FindFirstChild(n)
+			if p and p:IsA("BasePart") then return p end
+		end
+		if model.PrimaryPart and model.PrimaryPart:IsA("BasePart") then return model.PrimaryPart end
+		local best, score = nil, -1
+		for _, p in ipairs(model:GetDescendants()) do
+			if p:IsA("BasePart") and p.Parent and not isAccessoryPart(p) and not looksLikeWeapon(p.Name) and p.Transparency < 1 then
+				local s = p.Size; local sc = s.X*s.Y*s.Z
+				if sc > score then best, score = p, sc end
+			end
+		end
+		return best or model:FindFirstChildWhichIsA("BasePart", true)
+	end
+
+	local function makeBox(part, col)
+		local box = Instance.new("BoxHandleAdornment")
+		box.Name = "EnemyESP2_Box"
+		box.ZIndex = 5
+		box.Color3 = col
+		box.AlwaysOnTop = true
+		box.Adornee = part
+		box.Transparency = 0.25
+		-- Smaller than the part for a tighter look
+		box.Size = part.Size * 0.8
+		box.Parent = M.HOLDER
+		return box
+	end
+	local function makeBill(part, text, col)
+		local bill = Instance.new("BillboardGui")
+		bill.Name = "EnemyESP2_Label"
+		bill.Adornee = part
+		bill.AlwaysOnTop = true
+		-- Smaller label
+		bill.Size = UDim2.new(0, 140, 0, 18)
+		bill.StudsOffset = Vector3.new(0, 2.5, 0)
+		bill.MaxDistance = 1e6
+		bill.Parent = M.HOLDER
+
+		local tl = Instance.new("TextLabel")
+		tl.BackgroundTransparency = 1
+		tl.Size = UDim2.new(1, 0, 1, 0)
+		tl.Font = Enum.Font.GothamBold
+		tl.TextSize = 12
+		tl.TextColor3 = col
+		tl.TextStrokeTransparency = 0.3
+		tl.Text = text
+		tl.Parent = bill
+		return bill, tl
+	end
+
+	local function attachToModel(model)
+		if M._records[model] then return end
+		if P:GetPlayerFromCharacter(model) then return end
+		local b = bucketOf(model); if not b then return end
+
+		local part = pickBodyPart(model); if not part then return end
+		local id = b.Name
+		local col = colorForBucketName(id)
+		local label = getMobDisplayName(model)
+
+		local box = makeBox(part, col)
+		local bill, billLabel = makeBill(part, label, col)
+
+		local rec = {box=box, bill=bill, billLabel=billLabel, part=part, conns={}}
+		M._records[model] = rec
+
+		table.insert(rec.conns, part:GetPropertyChangedSignal("Size"):Connect(function()
+			if rec.box then rec.box.Size = part.Size * 0.8 end
+		end))
+		table.insert(rec.conns, model.DescendantAdded:Connect(function(inst)
+			if inst:IsA("BasePart") then
+				local better = pickBodyPart(model)
+				if better and better ~= rec.part then
+					rec.part = better
+					if rec.box then rec.box.Adornee = better end
+					if rec.bill then rec.bill.Adornee = better end
+				end
+			end
+		end))
+		local function refreshName()
+			if rec.billLabel then rec.billLabel.Text = getMobDisplayName(model) end
+		end
+		local hum = model:FindFirstChildOfClass("Humanoid")
+		if hum then table.insert(rec.conns, hum:GetPropertyChangedSignal("DisplayName"):Connect(refreshName)) end
+		for _, a in ipairs({"EnemyName","DisplayName","NameOverride","MobType","Type"}) do
+			table.insert(rec.conns, model:GetAttributeChangedSignal(a):Connect(refreshName))
+		end
+		table.insert(rec.conns, model.AncestryChanged:Connect(function(_, parent)
+			if parent == nil then
+				clearRecord(rec)
+				M._records[model] = nil
+			end
+		end))
+	end
+
+	local function fullScan()
+		local root = enemiesRoot(); if not root then return end
+		for _, bucket in ipairs(root:GetChildren()) do
+			if tonumber(bucket.Name) ~= nil then
+				for _, inst in ipairs(bucket:GetDescendants()) do
+					if inst:IsA("Model") then attachToModel(inst) end
+				end
+			end
+		end
+	end
+
+	table.insert(M._conns, R.Heartbeat:Connect(function() if not M.enabled then return end fullScan() end))
+	local root = enemiesRoot()
+	if root then
+		table.insert(M._conns, root.DescendantAdded:Connect(function(inst)
+			if inst:IsA("Model") then task.defer(function() attachToModel(inst) end) end
+		end))
+	end
+
+	function M.Disable()
+		if not M.enabled then return end
+		disableAll()
+	end
 end
 
 local function RemoveClutter()
@@ -1256,16 +985,27 @@ local function UFA(on)
 	task.spawn(function()
 		while getgenv().UniversalFireBallAimbot do
 			pcall(function()
-				local e=workspace:FindFirstChild('Enemies');if not e then return end
+				local enemies=workspace:FindFirstChild('Enemies');if not enemies then return end
 				local _,_,hrp=charHum();if not hrp then return end
-				local mp,bestD,best=hrp.Position,math.huge,nil
-				for _,b in ipairs(e:GetChildren())do
-					for _,m in ipairs(b:GetChildren())do
-						local p=m:FindFirstChild('HumanoidRootPart');local dtag=m:FindFirstChild('Dead')
-						if p and (not dtag or dtag.Value~=true)then local d=(mp-p.Position).Magnitude;if d<bestD then bestD=d;best=p end end
+				local hasAny=false;for k,v in pairs(cfg.UFASelectedMobs) do if v then hasAny=true break end end
+				if not hasAny then return end
+				local myPos=hrp.Position
+				local bestPart,bestD=nil,math.huge
+				for _,bucket in ipairs(enemies:GetChildren()) do
+					for _,mob in ipairs(bucket:GetChildren()) do
+						if mob:IsA('Model') then
+							local dtag=mob:FindFirstChild('Dead');local alive=(not dtag or dtag.Value~=true)
+							if alive then
+								local targetName=getMobDisplayName(mob)
+								if isMobSelected(targetName) then
+									local p=mob:FindFirstChild('HumanoidRootPart')
+									if p then local d=(myPos-p.Position).Magnitude;if d<bestD then bestD=d;bestPart=p end end
+								end
+							end
+						end
 					end
 				end
-				if best then fireAt(best.Position)end
+				if bestPart then fireAt(bestPart.Position) end
 			end)
 			task.wait(math.max(0.01,tonumber(cfg.universalFireballInterval)or 1.0))
 		end
@@ -1276,137 +1016,119 @@ local function CatAimbot(on)
 	getgenv().FireBallAimbot=on;if not on then return end
 	
 	print('Catacombs Fireball Aimbot: Starting...')
-	-- Target order: Dominators, Judgers, Lower Guards, Hell Emperor, Demons, Upper Guards, Veterans
-	local targetOrder = { 15, 14, 12, 17, 13, 10, 4 }
-	local currentTargetIndex = 1
-	local lastFireballTime = 0
+	local targetOrder={15,14,12,17,13,10,4}
+	local currentTargetIndex=1
+	local lastFireballTime=0
+	local lastTargetFolder=nil -- Track last targeted folder to prevent duplicates
+	local isFiring=false -- Prevent multiple simultaneous fires
 	
-	-- Initialize attempt counters for each target
-	for i = 1, #targetOrder do
-		targetAttempts[i] = 0
-	end
+	for i=1,#targetOrder do targetAttempts[i]=0 end
+	local fallbackPositions={ [15]=Vector3.new(-200,45,-300),[14]=Vector3.new(-180,50,-280),[12]=Vector3.new(-160,40,-260),[17]=Vector3.new(-220,55,-320),[13]=Vector3.new(-140,45,-240),[10]=Vector3.new(-120,40,-220),[4]=Vector3.new(-100,35,-200)}
 	
-	-- Strategic fallback positions for empty folders (near typical spawn areas)
-	local fallbackPositions = {
-		[15] = Vector3.new(-200, 45, -300),  -- Dominators area
-		[14] = Vector3.new(-180, 50, -280),  -- Judgers area
-		[12] = Vector3.new(-160, 40, -260),  -- Lower Guards area
-		[17] = Vector3.new(-220, 55, -320),  -- Hell Emperor area
-		[13] = Vector3.new(-140, 45, -240),  -- Demons area
-		[10] = Vector3.new(-120, 40, -220),  -- Upper Guards area
-		[4] = Vector3.new(-100, 35, -200),   -- Veterans area
-	}
-
 	task.spawn(function()
 		while getgenv().FireBallAimbot do
-			local player = P.LocalPlayer
+			local player=P.LocalPlayer
 			if player and player.Character and player.Character:FindFirstChild('HumanoidRootPart') then
-				-- Check if player is dead
-				local humanoid = player.Character:FindFirstChild('Humanoid')
-				if humanoid and humanoid.Health <= 0 then
+				local humanoid=player.Character:FindFirstChild('Humanoid')
+				if humanoid and humanoid.Health<=0 then 
 					print('Catacombs Fireball Aimbot: Player is dead, stopping...')
-					getgenv().FireBallAimbot = false
-					cfg.FireBallAimbot = false
-					save()
-					break
+					getgenv().FireBallAimbot=false;cfg.FireBallAimbot=false;save();break 
 				end
-
-				local currentTime = tick()
-
-				-- Check cooldown (use same cooldown as City Aimbot)
-				if (currentTime - lastFireballTime) >= (cfg.cityFireballCooldown or 0.2) then
-					local targetFolderNumber = targetOrder[currentTargetIndex]
-					local enemies = workspace:FindFirstChild('Enemies')
-
+				
+				-- Prevent multiple simultaneous fires
+				if isFiring then
+					task.wait(0.1)
+					continue
+				end
+				
+				local currentTime=tick()
+				-- Use proper fireball cooldown, not city cooldown
+				if (currentTime-lastFireballTime)>=(cfg.fireballCooldown or 0.3) then
+					local targetFolderNumber=targetOrder[currentTargetIndex]
+					
+					-- Skip if we just targeted this folder (prevent duplicate firing)
+					if targetFolderNumber == lastTargetFolder then
+						currentTargetIndex=currentTargetIndex+1
+						if currentTargetIndex>#targetOrder then currentTargetIndex=1 end
+						task.wait(0.2)
+						continue
+					end
+					
+					print('Catacombs Fireball Aimbot: TARGETING folder ' .. targetFolderNumber .. ' (Index: ' .. currentTargetIndex .. '/7)')
+					local enemies=workspace:FindFirstChild('Enemies')
+					
 					if enemies then
-						local targetFolder = enemies:FindFirstChild(tostring(targetFolderNumber))
+						local targetFolder=enemies:FindFirstChild(tostring(targetFolderNumber))
 						if targetFolder and targetFolder:IsA('Folder') then
-							local children = targetFolder:GetChildren()
+							local children=targetFolder:GetChildren()
 							print('Catacombs Fireball Aimbot: Checking folder ' .. targetFolderNumber .. ' with ' .. #children .. ' children')
 							
-							-- Get target position (use first mob or calculated folder position)
-							local targetPosition = nil
-							local foundMob = false
-
-							for _, child in pairs(children) do
-								print('Catacombs Fireball Aimbot: Checking child: ' .. child.Name .. ' (Type: ' .. child.ClassName .. ')')
+							local targetPosition=nil
+							local foundMob=false
+							
+							for _,child in pairs(children)do
 								if child:IsA('Model') and child:FindFirstChild('HumanoidRootPart') then
-									local hrp = child:FindFirstChild('HumanoidRootPart')
-									if hrp and hrp.Position then
-										targetPosition = hrp.Position
-										foundMob = true
+									local hrp=child:FindFirstChild('HumanoidRootPart')
+									if hrp and hrp.Position then 
+										targetPosition=hrp.Position;foundMob=true
 										print('Catacombs Fireball Aimbot: Found Model mob "' .. child.Name .. '" at ' .. tostring(targetPosition))
-										break
-									else
-										print('Catacombs Fireball Aimbot: Model "' .. child.Name .. '" has invalid HumanoidRootPart')
+										break 
 									end
-								elseif child:IsA('BasePart') and child.Position then
-									-- Validate the position is not at origin or invalid
-									if child.Position ~= Vector3.new(0, 0, 0) then
-										targetPosition = child.Position
-										foundMob = true
-										print('Catacombs Fireball Aimbot: Found BasePart mob "' .. child.Name .. '" at ' .. tostring(targetPosition))
-										break
-									else
-										print('Catacombs Fireball Aimbot: BasePart "' .. child.Name .. '" has invalid position (0,0,0)')
-									end
-								else
-									print('Catacombs Fireball Aimbot: Skipping child "' .. child.Name .. '" (not a valid mob type)')
+								elseif child:IsA('BasePart') and child.Position and child.Position~=Vector3.new(0,0,0) then
+									targetPosition=child.Position;foundMob=true
+									print('Catacombs Fireball Aimbot: Found BasePart mob "' .. child.Name .. '" at ' .. tostring(targetPosition))
+									break
 								end
 							end
-
-							-- If no mob found, use strategic fallback position to maintain cycle
-							if not foundMob then
-								targetPosition = fallbackPositions[targetFolderNumber] or Vector3.new(targetFolderNumber * 20, 5, targetFolderNumber * 10)
+							
+							if not foundMob then 
+								targetPosition=fallbackPositions[targetFolderNumber] or Vector3.new(targetFolderNumber*20,5,targetFolderNumber*10)
 								print('Catacombs Fireball Aimbot: No mobs in folder ' .. targetFolderNumber .. ', firing at strategic position ' .. tostring(targetPosition))
 							end
-
-							-- Fire the fireball (always fire to maintain cycle)
-							local success = pcall(function()
-								fireAt(targetPosition)
-							end)
-
+							
+							-- Set firing flag to prevent duplicates
+							isFiring=true
+							local success=pcall(function()fireAt(targetPosition)end)
+							
 							if success then
 								if foundMob then
 									print('Catacombs Fireball Aimbot: Fired at folder ' .. targetFolderNumber .. ' (' .. currentTargetIndex .. '/7) mob position ' .. tostring(targetPosition))
 								else
 									print('Catacombs Fireball Aimbot: Fired at folder ' .. targetFolderNumber .. ' (' .. currentTargetIndex .. '/7) calculated position ' .. tostring(targetPosition))
 								end
-								lastFireballTime = currentTime
-
+								lastFireballTime=currentTime
+								lastTargetFolder=targetFolderNumber
+								
 								-- Move to next target
-								currentTargetIndex = currentTargetIndex + 1
-
-								-- Reset to first target if completed cycle
-								if currentTargetIndex > #targetOrder then
-									currentTargetIndex = 1
+								currentTargetIndex=currentTargetIndex+1
+								if currentTargetIndex>#targetOrder then 
+									currentTargetIndex=1
 									print('Catacombs Fireball Aimbot: Completed cycle, restarting...')
 								end
-
-								-- Wait before next target (same as City Aimbot)
-								task.wait(0.3)
+								
+								-- Wait longer before next target to prevent rapid firing
+								task.wait(1.0)
 							else
 								print('Catacombs Fireball Aimbot: Failed to fire at folder ' .. targetFolderNumber .. ', moving to next...')
-								currentTargetIndex = currentTargetIndex + 1
-								if currentTargetIndex > #targetOrder then
-									currentTargetIndex = 1
-								end
-								task.wait(0.1)
+								currentTargetIndex=currentTargetIndex+1
+								if currentTargetIndex>#targetOrder then currentTargetIndex=1 end
+								task.wait(0.5)
 							end
+							
+							-- Clear firing flag
+							isFiring=false
 						else
 							print('Catacombs Fireball Aimbot: Folder ' .. targetFolderNumber .. ' not found, moving to next...')
-							currentTargetIndex = currentTargetIndex + 1
-							if currentTargetIndex > #targetOrder then
-								currentTargetIndex = 1
-							end
-							task.wait(0.1)
+							currentTargetIndex=currentTargetIndex+1
+							if currentTargetIndex>#targetOrder then currentTargetIndex=1 end
+							task.wait(0.3)
 						end
 					else
 						print('Catacombs Fireball Aimbot: workspace.Enemies not found')
 						task.wait(0.5)
 					end
 				else
-					task.wait(0.05)
+					task.wait(0.1)
 				end
 			else
 				task.wait(0.1)
@@ -1419,16 +1141,11 @@ local function CityAimbot(on)
 	getgenv().FireBallAimbotCity=on;if not on then return end
 	
 	print('City Fireball Aimbot: Starting...')
-	-- Smart 5-folder system: 6, 9, 5, 3, 2
-	local targetOrder = { 6, 9, 5, 3, 2 }
-	local currentTargetIndex = 1
-	local lastFireballTime = 0
-	local targetAttempts = {} -- Track attempts per target
-	
-	-- Initialize attempt counters for each target
-	for i = 1, #targetOrder do
-		targetAttempts[i] = 0
-	end
+	local targetOrder={6,9,5,3,2}
+	local currentTargetIndex=1
+	local lastFireballTime=0
+	local lastTargetFolder=nil -- Track last targeted folder to prevent duplicates
+	local isFiring=false -- Prevent multiple simultaneous fires
 	
 	-- Strategic fallback positions for empty folders (near typical city spawn areas)
 	local fallbackPositions = {
@@ -1439,114 +1156,109 @@ local function CityAimbot(on)
 		[2] = Vector3.new(60, 25, 40),    -- City area 2
 	}
 	
-	-- Smart timing system for 5-folder optimization
-	local targetWaitTime = 0.15  -- Optimized for 5-folder system
-
 	task.spawn(function()
 		while getgenv().FireBallAimbotCity do
-			local player = P.LocalPlayer
+			local player=P.LocalPlayer
 			if player and player.Character and player.Character:FindFirstChild('HumanoidRootPart') then
-				-- Check if player is dead
-				local humanoid = player.Character:FindFirstChild('Humanoid')
-				if humanoid and humanoid.Health <= 0 then
+				local humanoid=player.Character:FindFirstChild('Humanoid')
+				if humanoid and humanoid.Health<=0 then 
 					print('City Fireball Aimbot: Player is dead, stopping...')
-					getgenv().FireBallAimbotCity = false
-					cfg.FireBallAimbotCity = false
-					save()
-					break
+					getgenv().FireBallAimbotCity=false;cfg.FireBallAimbotCity=false;save();break 
 				end
-
-				local currentTime = tick()
-
-				-- Check cooldown
-				if (currentTime - lastFireballTime) >= (cfg.cityFireballCooldown or 0.2) then
-					local targetFolderNumber = targetOrder[currentTargetIndex]
+				
+				-- Prevent multiple simultaneous fires
+				if isFiring then
+					task.wait(0.1)
+					continue
+				end
+				
+				local currentTime=tick()
+				if (currentTime-lastFireballTime)>=(cfg.cityFireballCooldown or 0.3) then
+					local targetFolderNumber=targetOrder[currentTargetIndex]
+					
+					-- Skip if we just targeted this folder (prevent duplicate firing)
+					if targetFolderNumber == lastTargetFolder then
+						currentTargetIndex=currentTargetIndex+1
+						if currentTargetIndex>#targetOrder then currentTargetIndex=1 end
+						task.wait(0.2)
+						continue
+					end
+					
 					print('City Fireball Aimbot: TARGETING folder ' .. targetFolderNumber .. ' (Index: ' .. currentTargetIndex .. '/5)')
-					local enemies = workspace:FindFirstChild('Enemies')
-
+					local enemies=workspace:FindFirstChild('Enemies')
+					
 					if enemies then
-						local targetFolder = enemies:FindFirstChild(tostring(targetFolderNumber))
+						local targetFolder=enemies:FindFirstChild(tostring(targetFolderNumber))
 						if targetFolder and targetFolder:IsA('Folder') then
-							local children = targetFolder:GetChildren()
+							local children=targetFolder:GetChildren()
 							print('City Fireball Aimbot: Checking folder ' .. targetFolderNumber .. ' with ' .. #children .. ' children')
 							
-							-- Get target position (use first mob or calculated folder position)
-							local targetPosition = nil
-							local foundMob = false
-
-							for _, child in pairs(children) do
-								print('City Fireball Aimbot: Checking child: ' .. child.Name .. ' (Type: ' .. child.ClassName .. ')')
+							local targetPosition=nil
+							local foundMob=false
+							
+							for _,child in pairs(children)do
 								if child:IsA('Model') and child:FindFirstChild('HumanoidRootPart') then
-									local hrp = child:FindFirstChild('HumanoidRootPart')
-									if hrp and hrp.Position then
-										targetPosition = hrp.Position
-										foundMob = true
+									local hrp=child:FindFirstChild('HumanoidRootPart')
+									if hrp and hrp.Position then 
+										targetPosition=hrp.Position;foundMob=true
 										print('City Fireball Aimbot: Found Model mob "' .. child.Name .. '" at ' .. tostring(targetPosition))
-										break
-									else
-										print('City Fireball Aimbot: Model "' .. child.Name .. '" has invalid HumanoidRootPart')
+										break 
 									end
-								elseif child:IsA('BasePart') and child.Position then
-									-- Validate the position is not at origin or invalid
-									if child.Position ~= Vector3.new(0, 0, 0) then
-										targetPosition = child.Position
-										foundMob = true
-										print('City Fireball Aimbot: Found BasePart mob "' .. child.Name .. '" at ' .. tostring(targetPosition))
-										break
-									else
-										print('City Fireball Aimbot: BasePart "' .. child.Name .. '" has invalid position (0,0,0)')
-									end
-								else
-									print('City Fireball Aimbot: Skipping child "' .. child.Name .. '" (not a valid mob type)')
+								elseif child:IsA('BasePart') and child.Position and child.Position~=Vector3.new(0,0,0) then
+									targetPosition=child.Position;foundMob=true
+									print('City Fireball Aimbot: Found BasePart mob "' .. child.Name .. '" at ' .. tostring(targetPosition))
+									break
 								end
 							end
-
-							-- If no mob found, use strategic fallback position to maintain cycle
-							if not foundMob then
-								targetPosition = fallbackPositions[targetFolderNumber] or Vector3.new(targetFolderNumber * 20, 5, targetFolderNumber * 10)
+							
+							if not foundMob then 
+								targetPosition=fallbackPositions[targetFolderNumber] or Vector3.new(targetFolderNumber*20,5,targetFolderNumber*10)
 								print('City Fireball Aimbot: No mobs in folder ' .. targetFolderNumber .. ', firing at strategic position ' .. tostring(targetPosition))
 							end
-
-							-- Fire the fireball
-							local success = pcall(function()
-								fireAt(targetPosition)
-							end)
-
-							-- Always advance to next target after firing (success or fail)
-							if foundMob then
-								print('City Fireball Aimbot: Fired at folder ' .. targetFolderNumber .. ' (' .. currentTargetIndex .. '/5) mob position ' .. tostring(targetPosition))
+							
+							-- Set firing flag to prevent duplicates
+							isFiring=true
+							local success=pcall(function()fireAt(targetPosition)end)
+							
+							if success then
+								if foundMob then
+									print('City Fireball Aimbot: Fired at folder ' .. targetFolderNumber .. ' (' .. currentTargetIndex .. '/5) mob position ' .. tostring(targetPosition))
+								else
+									print('City Fireball Aimbot: Fired at folder ' .. targetFolderNumber .. ' (' .. currentTargetIndex .. '/5) calculated position ' .. tostring(targetPosition))
+								end
+								lastFireballTime=currentTime
+								lastTargetFolder=targetFolderNumber
+								
+								-- Move to next target
+								currentTargetIndex=currentTargetIndex+1
+								if currentTargetIndex>#targetOrder then 
+									currentTargetIndex=1
+									print('City Fireball Aimbot: Cycle completed, restarting...')
+								end
+								
+								-- Wait longer before next target to prevent rapid firing
+								task.wait(1.0)
 							else
-								print('City Fireball Aimbot: Fired at folder ' .. targetFolderNumber .. ' (' .. currentTargetIndex .. '/5) calculated position ' .. tostring(targetPosition))
+								print('City Fireball Aimbot: Failed to fire at folder ' .. targetFolderNumber .. ', moving to next...')
+								currentTargetIndex=currentTargetIndex+1
+								if currentTargetIndex>#targetOrder then currentTargetIndex=1 end
+								task.wait(0.5)
 							end
 							
-							lastFireballTime = currentTime
-							currentTargetIndex = currentTargetIndex + 1
-							print('City Fireball Aimbot: Moving to next target: ' .. currentTargetIndex .. '/5')
-
-							-- Reset to first target if completed cycle
-							if currentTargetIndex > #targetOrder then
-								currentTargetIndex = 1
-								print('City Fireball Aimbot: Cycle completed, restarting...')
-							end
-
-							-- Wait before next target
-							task.wait(targetWaitTime)
+							-- Clear firing flag
+							isFiring=false
 						else
 							print('City Fireball Aimbot: Folder ' .. targetFolderNumber .. ' not found, moving to next target...')
-							-- Move to next target if folder is missing
-							currentTargetIndex = currentTargetIndex + 1
-							if currentTargetIndex > #targetOrder then
-								currentTargetIndex = 1
-								print('City Fireball Aimbot: Cycle completed, restarting...')
-							end
-							task.wait(targetWaitTime)
+							currentTargetIndex=currentTargetIndex+1
+							if currentTargetIndex>#targetOrder then currentTargetIndex=1 end
+							task.wait(0.3)
 						end
 					else
 						print('City Fireball Aimbot: workspace.Enemies not found')
 						task.wait(0.5)
 					end
 				else
-					task.wait(0.05)
+					task.wait(0.1)
 				end
 			else
 				task.wait(0.1)
@@ -1574,41 +1286,91 @@ local function TAnim(on)cfg.AutoAnimatronicsSideTask=on;save();if on then sideLo
 local function TMut(on)cfg.AutoMutantsSideTask=on;save();if on then sideLoop('AutoMutantsSideTask','AutoMutantsSideTask',7)else getgenv().AutoMutantsSideTask=false end end
 
 local function TDualExotic(on)
-	cfg.DualExoticShop=on;save();getgenv().DualExoticShop=on;if not on then return end
+	cfg.DualExoticShop=on;save();getgenv().DualExoticShop=on
+	if not on then return end
+
 	task.spawn(function()
-		local function base(p)if not p then return nil end;if p:IsA('BasePart')then return p end;if p:IsA('Model')then return p:FindFirstChildWhichIsA('BasePart')end end
 		task.wait(10)
-		while getgenv().DualExoticShop do
-			pcall(function()
-				local _,h,hrp=charHum();if not hrp or(h and h.Health<=0)then return end
-				local spent=RS:WaitForChild('Events'):WaitForChild('Spent')
-				local r1=spent:WaitForChild('BuyExotic')
-				local r2=RS:WaitForChild('Events'):WaitForChild('GiveItemRequest2')
-				local r2Old=spent:WaitForChild('BuyExotic2')
-				local fr=LP.PlayerGui:WaitForChild('Frames')
-				local g1=fr:WaitForChild('ExoticStore')
-				local g2=fr:WaitForChild('ExoticStore2')
-				local p1=base(workspace:WaitForChild('Pads'):WaitForChild('ExoticStore'):WaitForChild('1'))
-				local p2=base(workspace:WaitForChild('Pads'):WaitForChild('ExoticStore2'):WaitForChild('1'))
-				local function buy(ui,remote,isStore2)
-					local list=ui and ui:FindFirstChild('Content')and ui.Content:FindFirstChild('ExoticList');if not list then return end
-					for _,v in pairs(list:GetChildren())do
-						local i=v:FindFirstChild('Info');local i2=i and i:FindFirstChild('Info')
-						if i2 and i2.Text=='POTION' then
-							local n=tonumber(v.Name:match('%d+'))
-							if n then
-								pcall(function()remote:FireServer(n)end)
-								if isStore2 then pcall(function()r2Old:FireServer(n)end) end
-								task.wait(0.1)
-							end
+
+		local player = LP
+		local character = player.Character or player.CharacterAdded:Wait()
+		local humanoidRootPart = character:WaitForChild("HumanoidRootPart")
+
+		player.CharacterAdded:Connect(function(newCharacter)
+			character = newCharacter
+			humanoidRootPart = newCharacter:WaitForChild("HumanoidRootPart")
+		end)
+
+		local remote1 = RS:WaitForChild("Events"):WaitForChild("Spent"):WaitForChild("BuyExotic")
+		local remote2 = RS:WaitForChild("Events"):WaitForChild("GiveItemRequest2")
+		local remote2Old = RS:WaitForChild("Events"):WaitForChild("Spent"):WaitForChild("BuyExotic2")
+
+		local guiFolder = player.PlayerGui:WaitForChild("Frames")
+		local gui1 = guiFolder:WaitForChild("ExoticStore")
+		local gui2 = guiFolder:WaitForChild("ExoticStore2")
+
+		local function getPadPart(padModel)
+			if not padModel then return nil end
+			if padModel:IsA("BasePart") then return padModel end
+			if padModel:IsA("Model") then return padModel:FindFirstChildWhichIsA("BasePart") end
+			return nil
+		end
+
+		local pad1 = getPadPart(workspace.Pads.ExoticStore["1"])
+		local pad2 = getPadPart(workspace.Pads.ExoticStore2["1"])
+
+		local function buyPotions(shopFrame, remote, isExoticStore2)
+			if not shopFrame or not remote then return end
+			local content = shopFrame:FindFirstChild("Content")
+			local list = content and content:FindFirstChild("ExoticList")
+			if not list then return end
+
+			for _, v in pairs(list:GetChildren()) do
+				local info = v:FindFirstChild("Info")
+				local info2 = info and info:FindFirstChild("Info")
+				if info2 and info2.Text == "POTION" then
+					local itemNumber = tonumber(string.match(v.Name, "%d+"))
+					if itemNumber then
+						task.wait(0.1)
+						pcall(function() remote:FireServer(itemNumber) end)
+						if isExoticStore2 then
+							pcall(function() remote2Old:FireServer(itemNumber) end)
 						end
 					end
 				end
-				local orig=hrp.CFrame
-				if p1 then hrp.CFrame=p1.CFrame+Vector3.new(0,3,0);task.wait(2);buy(g1,r1,false);hrp.CFrame=orig;task.wait(2)end
-				if p2 then hrp.CFrame=p2.CFrame+Vector3.new(0,3,0);task.wait(2);buy(g2,r2,true);hrp.CFrame=orig;task.wait(2)end
+			end
+		end
+
+		local function safeTeleport(targetCFrame)
+			if not humanoidRootPart or not humanoidRootPart.Parent then return false end
+			humanoidRootPart.CFrame = targetCFrame + Vector3.new(0, 3, 0)
+			task.wait(3)
+			return true
+		end
+
+		while getgenv().DualExoticShop do
+			local success = pcall(function()
+				local originalCFrame = humanoidRootPart.CFrame
+
+				if pad1 and gui1 and remote1 and safeTeleport(pad1.CFrame) then
+					buyPotions(gui1, remote1, false)
+					humanoidRootPart.CFrame = originalCFrame
+					task.wait(3)
+				end
+
+				if pad2 and gui2 and remote2 and safeTeleport(pad2.CFrame) then
+					buyPotions(gui2, remote2, true)
+					humanoidRootPart.CFrame = originalCFrame
+					task.wait(3)
+				end
 			end)
-			for i=1,600 do if not getgenv().DualExoticShop then break end task.wait(1)end
+
+			if not success then task.wait(30) end
+
+			for i=1,1200 do
+				if not getgenv().DualExoticShop then break end
+				task.wait(1)
+			end
 		end
 	end)
 end
@@ -1644,46 +1406,62 @@ local function TKA(on)cfg.KillAura=on;save();getgenv().KillAura=on;if KA then KA
 	end)
 end
 
+-- Auto Block (spam while under full HP)
+local AB={conn=nil,charConn=nil,loop=nil}
+local function TAutoBlock(on)
+	cfg.AutoBlock=on;save();getgenv().AutoBlock=on
+	local function stop()if AB.conn then AB.conn:Disconnect() AB.conn=nil end;if AB.charConn then AB.charConn:Disconnect() AB.charConn=nil end;if AB.loop then AB.loop:Disconnect() AB.loop=nil end end
+	if not on then stop();return end
+	local function startLoop(h)
+		if AB.loop then AB.loop:Disconnect() AB.loop=nil end
+		if not h then return end
+		local last=0
+		AB.loop=R.Heartbeat:Connect(function()
+			if not getgenv().AutoBlock then return end
+			if not h.Parent or h.Health<=0 then return end
+			if h.MaxHealth and h.Health<h.MaxHealth then
+				local now=os.clock()
+				if now-last>=0.1 then
+					last=now
+					pcall(function()ev('Events','Other','Ability'):InvokeServer('Block',Vector3.new(-938.988037109375,-1597.0552978515625,-3059.690673828125))end)
+				end
+			end
+		end)
+	end
+	AB.charConn=LP.CharacterAdded:Connect(function(c)local h=c:WaitForChild('Humanoid',10)startLoop(h)end)
+	local c=LP.Character or LP.CharacterAdded:Wait()
+	startLoop(c:FindFirstChildOfClass('Humanoid'))
+end
+
+-- Combat Log (kick under 10% HP)
+local CL={conn=nil}
+local function TCombatLog(on)
+	cfg.CombatLog=on;save();getgenv().CombatLog=on
+	if CL.conn then CL.conn:Disconnect() CL.conn=nil end
+	if not on then return end
+	local function hook(h)
+		if not h then return end
+		if CL.conn then CL.conn:Disconnect() CL.conn=nil end
+		CL.conn=h.HealthChanged:Connect(function(hp)
+			if not getgenv().CombatLog then return end
+			if h.MaxHealth and h.MaxHealth>0 and hp>0 then
+				if hp<=0.25*h.MaxHealth then
+	pcall(function()
+		webhook('Combat Log Bot','Combat Log',LP.Name..' left at '..math.floor((hp/h.MaxHealth)*100)..'% HP',WID)
+	end)
+	pcall(function()LP:Kick('Combat Log')end)
+end
+			end
+		end)
+	end
+	local c=LP.Character or LP.CharacterAdded:Wait()
+	hook(c:FindFirstChildOfClass('Humanoid'))
+	LP.CharacterAdded:Connect(function(nc) hook(nc:WaitForChild('Humanoid',10)) end)
+end
+
 local SG={gui=nil,run=false}
 local function TStatGui(on)cfg.StatGui=on;save();getgenv().StatGui=on;if not on then SG.run=false;if SG.gui then pcall(function()SG.gui:Destroy()end)SG.gui=nil end return end
-	task.spawn(function()
-		local function fmt(n)n=tonumber(n)or 0;if n>=1e18 then return string.format('%.3f',n/1e18)..'Qn'end;if n>=1e15 then return string.format('%.3f',n/1e15)..'Qd'end
-			if n>=1e12 then return string.format('%.3f',n/1e12)..'T'end;if n>=1e9 then return string.format('%.3f',n/1e9)..'B'end
-			if n>=1e6 then return string.format('%.3f',n/1e6)..'M'end;if n>=1e3 then return string.format('%.3f',n/1e3)..'K'end return tostring(n)end
-		local function dark(c,a)return Color3.fromRGB(math.clamp(c.R*255-a,0,255),math.clamp(c.G*255-a,0,255),math.clamp(c.B*255-a,0,255))end
-		local col={Power=Color3.fromRGB(220,60,60),Health=Color3.fromRGB(100,220,100),Defense=Color3.fromRGB(100,150,220),Psychic=Color3.fromRGB(140,50,180),Magic=Color3.fromRGB(210,140,255),Mobility=Color3.fromRGB(240,240,80)}
-		local gui=Instance.new('ScreenGui');gui.Name='StatsGUI';gui.Parent=LP:WaitForChild('PlayerGui');SG.gui=gui
-		local fr=Instance.new('Frame');fr.BackgroundColor3=Color3.fromRGB(20,20,20);fr.BorderSizePixel=1;fr.BorderColor3=Color3.fromRGB(50,50,50);fr.Position=UDim2.new(0.5,0,0.5,0);fr.Size=UDim2.new(0,500,0,350);fr.Parent=gui;fr.Active=true;fr.Draggable=true
-		local st=Instance.new('UIStroke');st.Parent=fr;st.Thickness=2;st.Color=Color3.fromRGB(70,70,70);local c=Instance.new('UICorner');c.CornerRadius=UDim.new(0,12);c.Parent=fr
-		local lay=Instance.new('UIListLayout');lay.Parent=fr;lay.SortOrder=Enum.SortOrder.LayoutOrder;lay.Padding=UDim.new(0,4);lay.HorizontalAlignment=Enum.HorizontalAlignment.Center;lay.FillDirection=Enum.FillDirection.Vertical;lay.VerticalAlignment=Enum.VerticalAlignment.Top
-		local pad=Instance.new('UIPadding');pad.PaddingTop=UDim2.new().X;pad.PaddingBottom=UDim2.new().X;pad.PaddingLeft=UDim2.new().X;pad.PaddingRight=UDim2.new().X;pad.PaddingTop=UDim.new(0,10);pad.PaddingBottom=UDim.new(0,10);pad.PaddingLeft=UDim.new(0,10);pad.PaddingRight=UDim.new(0,10);pad.Parent=fr
-		local cw,pw,bh,rp=280,160,55,5
-		local function row(n,cl)
-			local r=Instance.new('Frame');r.Size=UDim2.new(0,cw+pw+rp,0,bh);r.BackgroundTransparency=1;r.Parent=fr
-			local rl=Instance.new('UIListLayout');rl.FillDirection=Enum.FillDirection.Horizontal;rl.HorizontalAlignment=Enum.HorizontalAlignment.Center;rl.SortOrder=Enum.SortOrder.LayoutOrder;rl.Padding=UDim.new(0,rp);rl.Parent=r
-			local function box(w,cur)
-				local b=Instance.new('Frame');b.Size=UDim2.new(0,w,1,0);b.BackgroundColor3=dark(cl,80)
-				local ic=Instance.new('UICorner');ic.CornerRadius=UDim.new(0,8);ic.Parent=b
-				local is=Instance.new('UIStroke');is.Parent=b;is.Color=Color3.fromRGB(60,60,60);is.Thickness=1
-				local l=Instance.new('TextLabel');l.Size=UDim2.new(1,-12,1,0);l.Position=UDim2.new(0,6,0,0);l.BackgroundTransparency=1;l.TextColor3=cl;l.Font=Enum.Font.GothamBold;l.TextSize=28;l.Text=cur and(n..': 0')or'0/h';l.TextXAlignment=Enum.TextXAlignment.Left;l.TextYAlignment=Enum.TextYAlignment.Center;l.Parent=b
-				b.Parent=r;return l
-			end
-			return box(cw,true),box(pw,false)
-		end
-		local pl,plh=row('Power',col.Power);local hl,hlh=row('Health',col.Health);local dl,dlh=row('Defense',col.Defense);local yl,ylh=row('Psychic',col.Psychic);local ml,mlh=row('Magic',col.Magic);local bl,blh=row('Mobility',col.Mobility)
-		lay:GetPropertyChangedSignal('AbsoluteContentSize'):Connect(function()local w=cw+pw+rp+20;local h=lay.AbsoluteContentSize.Y+20;fr.Size=UDim2.new(0,w,0,h);fr.Position=UDim2.new(0.5,-w/2,0.5,-h/2)end)
-		local function stats()local s=RS:WaitForChild('Data'):WaitForChild(LP.Name):WaitForChild('Stats');return{Power=s.Power and s.Power.Value or 0,Health=s.Health and s.Health.Value or 0,Defense=s.Defense and s.Defense.Value or 0,Psychic=s.Psychics and s.Psychics.Value or 0,Magic=s.Magic and s.Magic.Value or 0,Mobility=s.Mobility and s.Mobility.Value or 0}end
-		local hist,dur={},600;SG.run=true
-		while SG.run and getgenv().StatGui and SG.gui do
-			local now=os.clock();local s=stats();table.insert(hist,{time=now,stats=s});while #hist>0 and(now-hist[1].time>dur)do table.remove(hist,1)end
-			local ph={};if #hist>1 then local first=hist[1];local el=now-first.time;for k,v in pairs(s)do local g=v-(first.stats[k]or 0);ph[k]=g*(3600/math.max(el,1))end end
-			pl.Text='Power: '..fmt(s.Power);plh.Text=fmt(ph.Power or 0)..'/h';hl.Text='Health: '..fmt(s.Health);hlh.Text=fmt(ph.Health or 0)..'/h'
-			dl.Text='Defense: '..fmt(s.Defense);dlh.Text=fmt(ph.Defense or 0)..'/h';yl.Text='Psychic: '..fmt(s.Psychic);ylh.Text=fmt(ph.Psychic or 0)..'/h'
-			ml.Text='Magic: '..fmt(s.Magic);mlh.Text=fmt(ph.Magic or 0)..'/h';bl.Text='Mobility: '..fmt(s.Mobility);blh.Text=fmt(ph.Mobility or 0)..'/h'
-			task.wait(0.5)
-		end
-		if SG.gui then pcall(function()SG.gui:Destroy()end)end;SG.gui=nil
-	end)
+	-- retained but no UI toggle
 end
 
 local QuickTeleportsGUI = nil
@@ -1691,348 +1469,52 @@ local function TQuickTeleports(on)
 	cfg.QuickTeleports = on
 	save()
 	getgenv().QuickTeleports = on
-	
-	if not on then
-		if QuickTeleportsGUI then
-			pcall(function() QuickTeleportsGUI:Destroy() end)
-			QuickTeleportsGUI = nil
-		end
-		return
-	end
-	
-	-- Create the Quick Teleports GUI
-	local Players = game:GetService("Players")
-	local ReplicatedStorage = game:GetService("ReplicatedStorage")
-	local LocalPlayer = Players.LocalPlayer
-
-	local ScreenGui = Instance.new("ScreenGui")
-	ScreenGui.ResetOnSpawn = false
-	ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
-	QuickTeleportsGUI = ScreenGui
-
-	local Frame = Instance.new("Frame")
-	Frame.Size = UDim2.new(0, 180, 0, 200)
-	Frame.Position = UDim2.new(0, 20, 1, -220)
-	Frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-	Frame.BorderSizePixel = 0
-	Frame.Active = true
-	Frame.Draggable = true
-	Frame.Parent = ScreenGui
-
-	local UICorner = Instance.new("UICorner")
-	UICorner.CornerRadius = UDim.new(0, 8)
-	UICorner.Parent = Frame
-
-	local Title = Instance.new("TextLabel")
-	Title.Size = UDim2.new(1, 0, 0, 25)
-	Title.Position = UDim2.new(0, 0, 0, 0)
-	Title.BackgroundTransparency = 1
-	Title.Text = "Teleports"
-	Title.TextColor3 = Color3.fromRGB(255, 255, 255)
-	Title.TextSize = 14
-	Title.Font = Enum.Font.GothamSemibold
-	Title.Parent = Frame
-
-	local function createButton(name, onClick, yPosition)
-		local Button = Instance.new("TextButton")
-		Button.Size = UDim2.new(0, 160, 0, 30)
-		Button.Position = UDim2.new(0.5, -80, 0, yPosition)
-		Button.Text = name
-		Button.Font = Enum.Font.Gotham
-		Button.TextSize = 12
-		Button.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-		Button.TextColor3 = Color3.fromRGB(255, 255, 255)
-		Button.BorderSizePixel = 0
-		Button.Parent = Frame
-
-		local UIC = Instance.new("UICorner")
-		UIC.CornerRadius = UDim.new(0, 4)
-		UIC.Parent = Button
-
-		Button.MouseEnter:Connect(function() Button.BackgroundColor3 = Color3.fromRGB(60, 60, 60) end)
-		Button.MouseLeave:Connect(function() Button.BackgroundColor3 = Color3.fromRGB(45, 45, 45) end)
-		Button.MouseButton1Click:Connect(function() pcall(onClick) end)
-	end
-
-	local function tpTo(target)
-		if not target then return end
-		local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-		local hrp = char:WaitForChild("HumanoidRootPart")
-		local cf = target:IsA("BasePart") and target.CFrame or (target.IsA and target:IsA("Model") and target:GetPivot() or nil)
+	if not on then if QuickTeleportsGUI then pcall(function() QuickTeleportsGUI:Destroy() end) QuickTeleportsGUI=nil end return end
+	local Players=game:GetService("Players");local ReplicatedStorage=game:GetService("ReplicatedStorage");local LocalPlayer=Players.LocalPlayer
+	local ScreenGui=Instance.new("ScreenGui")ScreenGui.ResetOnSpawn=false ScreenGui.Parent=LocalPlayer:WaitForChild("PlayerGui") QuickTeleportsGUI=ScreenGui
+	local Frame=Instance.new("Frame")Frame.Size=UDim2.new(0,180,0,240)Frame.Position=UDim2.new(0,20,1,-260)Frame.BackgroundColor3=Color3.fromRGB(30,30,30)Frame.BorderSizePixel=0 Frame.Active=true Frame.Draggable=true Frame.Parent=ScreenGui
+	local UICorner=Instance.new("UICorner")UICorner.CornerRadius=UDim.new(0,8)UICorner.Parent=Frame
+	local Title=Instance.new("TextLabel")Title.Size=UDim2.new(1,0,0,25)Title.BackgroundTransparency=1 Title.Text="Teleports"Title.TextColor3=Color3.fromRGB(255,255,255)Title.TextSize=14 Title.Font=Enum.Font.GothamSemibold Title.Parent=Frame
+	local function createButton(name,onClick,y)local Button=Instance.new("TextButton")Button.Size=UDim2.new(0,160,0,30)Button.Position=UDim2.new(0.5,-80,0,y)Button.Text=name Button.Font=Enum.Font.Gotham Button.TextSize=12 Button.BackgroundColor3=Color3.fromRGB(45,45,45)Button.TextColor3=Color3.fromRGB(255,255,255)Button.BorderSizePixel=0 Button.Parent=Frame local UIC=Instance.new("UICorner")UIC.CornerRadius=UDim.new(0,4)UIC.Parent=Button Button.MouseEnter:Connect(function()Button.BackgroundColor3=Color3.fromRGB(60,60,60)end)Button.MouseLeave:Connect(function()Button.BackgroundColor3=Color3.fromRGB(45,45,45)end)Button.MouseButton1Click:Connect(function()pcall(onClick)end)end
+	local function tpToQuick(target)if not target then return end local char=LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()local hrp=char:WaitForChild("HumanoidRootPart")local cf=target:IsA("BasePart") and target.CFrame or (target.IsA and target:IsA("Model") and target:GetPivot() or nil)if not cf then return end hrp.CFrame=cf+Vector3.new(0,3,0)end
+	local function resolveHeavensDoorPart()local ok,res=pcall(function()local hd=workspace:FindFirstChild("HeavensDoor")return hd and hd:GetChildren()[10] or nil end)return ok and res or nil end
+	local function resolveUndergroundQDoorPart()local ok,res=pcall(function()local gm=workspace:FindFirstChild("GameMap");local ug=gm and gm:FindFirstChild("Underground");local c=ug and ug:FindFirstChild("R237G234B234");local qd=c and c:FindFirstChild("? Door");local mdl=qd and qd:FindFirstChild("Model")return mdl and mdl:GetChildren()[2] or nil end)return ok and res or nil end
+	local function resolveIceCrystalPart()local ok,res=pcall(function()local child=workspace:GetChildren()[95];local ic=child and child:FindFirstChild("Ice Crystal")return ic and ic:GetChildren()[2] or nil end)return ok and res or nil end
+	local function resolveCatacombsCityPart()local ok,res=pcall(function()local city=workspace:FindFirstChild("CatacombsCity")return city and city:GetChildren()[3074] or nil end)return ok and res or nil end
+	local function resolveHellMapUnion()local ok,res=pcall(function()local hm=workspace:FindFirstChild("HellMap")return hm and hm:FindFirstChild("Union") or nil end)return ok and res or nil end
+	local function resolveFireCrystalPart()local ok,res=pcall(function()local child=workspace:GetChildren()[117];local child7=child and child:GetChildren()[7];local mdl=child7 and child7:FindFirstChild("Model");local mdl2=mdl and mdl:FindFirstChild("Model");local fc=mdl2 and mdl2:FindFirstChild("Fire Crystal")return fc and fc:GetChildren()[2] or nil end)return ok and res or nil end
+	local function resolvePower30()local ok,res=pcall(function()local ti=workspace:FindFirstChild("TrainingInterface");local pwr=ti and ti:FindFirstChild("Power")return pwr and pwr:FindFirstChild("30") or nil end)return ok and res or nil end
+	local function resolveHellMapPower()local ok,res=pcall(function()local hm=workspace:FindFirstChild("HellMap")return hm and hm:GetChildren()[2729] or nil end)return ok and res or nil end
+	local function resolvePower28()local ok,res=pcall(function()local ti=workspace:FindFirstChild("TrainingInterface");local pwr=ti and ti:FindFirstChild("Power")return pwr and pwr:FindFirstChild("28") or nil end)return ok and res or nil end
+	local function resolveMeteoriteOrb()local ok,res=pcall(function()local meteorite=workspace:FindFirstChild("meteorite for psl")return meteorite and meteorite:FindFirstChild("orb") or nil end)return ok and res or nil end
+	local function resolveMagicPart()local ok,res=pcall(function()local child=workspace:GetChildren()[136]return child and child:FindFirstChild("Part") or nil end)return ok and res or nil end
+	local function resolveMagic15()local ok,res=pcall(function()local ti=workspace:FindFirstChild("TrainingInterface");local mag=ti and ti:FindFirstChild("Magic")return mag and mag:FindFirstChild("15") or nil end)return ok and res or nil end
+	local function resolveMagic14()local ok,res=pcall(function()local ti=workspace:FindFirstChild("TrainingInterface");local mag=ti and ti:FindFirstChild("Magic")return mag and mag:FindFirstChild("14") or nil end)return ok and res or nil end
+	local function resolveMagic13()local ok,res=pcall(function()local ti=workspace:FindFirstChild("TrainingInterface");local mag=ti and ti:FindFirstChild("Magic")return mag and mag:FindFirstChild("13") or nil end)return ok and res or nil end
+	local function resolveMagic12()local ok,res=pcall(function()local ti=workspace:FindFirstChild("TrainingInterface");local mag=ti and ti:FindFirstChild("Magic")return mag and mag:FindFirstChild("12") or nil end)return ok and res or nil end
+	local function resolvePsychicTree()local ok,res=pcall(function()local gm=workspace:FindFirstChild("GameMap");local ug=gm and gm:FindFirstChild("Underground");local c=ug and ug:FindFirstChild("R237G234B234");local child5=c and c:GetChildren()[5];local mdl=child5 and child5:FindFirstChild("Model");local tree=mdl and mdl:FindFirstChild("Tree3")return tree and tree:FindFirstChild("Trunk") or nil end)return ok and res or nil end
+	local function resolvePsychic28()local ok,res=pcall(function()local ti=workspace:FindFirstChild("TrainingInterface");local psy=ti and ti:FindFirstChild("Psychics")return psy and psy:FindFirstChild("28") or nil end)return ok and res or nil end
+	local function resolvePsychic27()local ok,res=pcall(function()local ti=workspace:FindFirstChild("TrainingInterface");local psy=ti and ti:FindFirstChild("Psychics")return psy and psy:FindFirstChild("27") or nil end)return ok and res or nil end
+	local function resolvePsychic24()local ok,res=pcall(function()local ti=workspace:FindFirstChild("TrainingInterface");local psy=ti and ti:FindFirstChild("Psychics")return psy and psy:FindFirstChild("24") or nil end)return ok and res or nil end
+	local function resolvePsychic23()local ok,res=pcall(function()local ti=workspace:FindFirstChild("TrainingInterface");local psy=ti and ti:FindFirstChild("Psychics")return psy and psy:FindFirstChild("23") or nil end)return ok and res or nil end
+	local function resolvePsychic22()local ok,res=pcall(function()local ti=workspace:FindFirstChild("TrainingInterface");local psy=ti and ti:FindFirstChild("Psychics")return psy and psy:FindFirstChild("22") or nil end)return ok and res or nil end
+	local function tpToQuick(target)if not target then return end local char=LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()local hrp=char:WaitForChild("HumanoidRootPart")local cf=target:IsA("BasePart") and target.CFrame or (target.IsA and target:IsA("Model") and target:GetPivot() or nil)if not cf then return end hrp.CFrame=cf+Vector3.new(0,3,0)end
+	local function bestDefenseTeleportQ()local stats=ReplicatedStorage:WaitForChild("Data"):WaitForChild(LocalPlayer.Name):WaitForChild("Stats");local v=stats and stats:FindFirstChild("Defense") and stats.Defense.Value or 0;local zones={{req=1e20,getter=resolveHeavensDoorPart},{req=1e19,getter=resolveUndergroundQDoorPart},{req=1e18,getter=resolveIceCrystalPart},{req=1e17,getter=resolveCatacombsCityPart},{req=1e16,getter=resolveHellMapUnion}}for _,z in ipairs(zones)do if v>=z.req then local inst=z.getter();if inst then tpToQuick(inst) return end end end end
+	local function bestPowerTeleportQ()local stats=ReplicatedStorage:WaitForChild("Data"):WaitForChild(LocalPlayer.Name):WaitForChild("Stats");local v=stats and stats:FindFirstChild("Power") and stats.Power.Value or 0;local zones={{req=1e20,getter=resolveFireCrystalPart},{req=1e19,getter=resolvePower30},{req=1e18,getter=resolveHellMapPower},{req=1e17,getter=resolvePower28},{req=1e16,getter=resolveMeteoriteOrb}}for _,z in ipairs(zones)do if v>=z.req then local inst=z.getter();if inst then tpToQuick(inst) return end end end end
+	local function bestMagicTeleportQ()local stats=ReplicatedStorage:WaitForChild("Data"):WaitForChild(LocalPlayer.Name):WaitForChild("Stats");local v=stats and stats:FindFirstChild("Magic") and stats.Magic.Value or 0;local zones={{req=1e20,getter=resolveMagicPart},{req=1e19,getter=resolveMagic15},{req=1e18,getter=resolveMagic14},{req=1e17,getter=resolveMagic13},{req=5e15,getter=resolveMagic12}}for _,z in ipairs(zones)do if v>=z.req then local inst=z.getter();if inst then tpToQuick(inst) return end end end end
+	local function bestPsychicTeleportQ()local stats=ReplicatedStorage:WaitForChild("Data"):WaitForChild(LocalPlayer.Name):WaitForChild("Stats");local v=stats and stats:FindFirstChild("Psychics") and stats.Psychics.Value or 0;local zones={{req=1e20,getter=resolvePsychicTree},{req=1e19,getter=resolvePsychic28},{req=1e18,getter=resolvePsychic27},{req=1e17,getter=resolvePsychic24},{req=5e16,getter=resolvePsychic23},{req=5e15,getter=resolvePsychic22}}for _,z in ipairs(zones)do if v>=z.req then local inst=z.getter();if inst then tpToQuick(inst) return end end end end
+	createButton("Dark Exotic Store",function()local p=workspace:FindFirstChild("Pads");local s2=p and p:FindFirstChild("ExoticStore2");local pad=s2 and s2:FindFirstChild("1");tpToQuick(pad)end,30)
+	createButton("Best Defense Area",bestDefenseTeleportQ,65)
+	createButton("Best Power Area",bestPowerTeleportQ,100)
+	createButton("Best Magic Area",bestMagicTeleportQ,135)
+	createButton("Best Psychic Area",bestPsychicTeleportQ,170)
+	createButton("Teleport To Save",function()
+		local cf=_G.__SavedCFrame or savedCFrame
+		if not cf then loadPersistedSave(); cf=savedCFrame end
 		if not cf then return end
-		hrp.CFrame = cf + Vector3.new(0, 3, 0)
-	end
-
-	-- Add all the resolver functions and teleport functions here (same as your standalone script)
-	-- For brevity, I'll include the key ones:
-	
-	local function resolveHeavensDoorPart()
-		local ok, res = pcall(function()
-			local hd = workspace:FindFirstChild("HeavensDoor")
-			return hd and hd:GetChildren()[10] or nil
-		end)
-		return ok and res or nil
-	end
-	
-	local function resolveUndergroundQDoorPart()
-		local ok, res = pcall(function()
-			local gm = workspace:FindFirstChild("GameMap")
-			local ug = gm and gm:FindFirstChild("Underground")
-			local c = ug and ug:FindFirstChild("R237G234B234")
-			local qd = c and c:FindFirstChild("? Door")
-			local mdl = qd and qd:FindFirstChild("Model")
-			return mdl and mdl:GetChildren()[2] or nil
-		end)
-		return ok and res or nil
-	end
-	
-	local function resolveIceCrystalPart()
-		local ok, res = pcall(function()
-			local child = workspace:GetChildren()[95]
-			local ic = child and child:FindFirstChild("Ice Crystal")
-			return ic and ic:GetChildren()[2] or nil
-		end)
-		return ok and res or nil
-	end
-	
-	local function resolveCatacombsCityPart()
-		local ok, res = pcall(function()
-			local city = workspace:FindFirstChild("CatacombsCity")
-			return city and city:GetChildren()[3074] or nil
-		end)
-		return ok and res or nil
-	end
-	
-	local function resolveHellMapUnion()
-		local ok, res = pcall(function()
-			local hm = workspace:FindFirstChild("HellMap")
-			return hm and hm:FindFirstChild("Union") or nil
-		end)
-		return ok and res or nil
-	end
-
-	local function resolveFireCrystalPart()
-		local ok, res = pcall(function()
-			local child = workspace:GetChildren()[117]
-			local child7 = child and child:GetChildren()[7]
-			local mdl = child7 and child7:FindFirstChild("Model")
-			local mdl2 = mdl and mdl:FindFirstChild("Model")
-			local fc = mdl2 and mdl2:FindFirstChild("Fire Crystal")
-			return fc and fc:GetChildren()[2] or nil
-		end)
-		return ok and res or nil
-	end
-	
-	local function resolvePower30()
-		local ok, res = pcall(function()
-			local ti = workspace:FindFirstChild("TrainingInterface")
-			local pwr = ti and ti:FindFirstChild("Power")
-			return pwr and pwr:FindFirstChild("30") or nil
-		end)
-		return ok and res or nil
-	end
-	
-	local function resolveHellMapPower()
-		local ok, res = pcall(function()
-			local hm = workspace:FindFirstChild("HellMap")
-			return hm and hm:GetChildren()[2729] or nil
-		end)
-		return ok and res or nil
-	end
-	
-	local function resolvePower28()
-		local ok, res = pcall(function()
-			local ti = workspace:FindFirstChild("TrainingInterface")
-			local pwr = ti and ti:FindFirstChild("Power")
-			return pwr and pwr:FindFirstChild("28") or nil
-		end)
-		return ok and res or nil
-	end
-	
-	local function resolveMeteoriteOrb()
-		local ok, res = pcall(function()
-			local meteorite = workspace:FindFirstChild("meteorite for psl")
-			return meteorite and meteorite:FindFirstChild("orb") or nil
-		end)
-		return ok and res or nil
-	end
-
-	local function resolveMagicPart()
-		local ok, res = pcall(function()
-			local child = workspace:GetChildren()[136]
-			return child and child:FindFirstChild("Part") or nil
-		end)
-		return ok and res or nil
-	end
-	
-	local function resolveMagic15()
-		local ok, res = pcall(function()
-			local ti = workspace:FindFirstChild("TrainingInterface")
-			local mag = ti and ti:FindFirstChild("Magic")
-			return mag and mag:FindFirstChild("15") or nil
-		end)
-		return ok and res or nil
-	end
-	
-	local function resolveMagic14()
-		local ok, res = pcall(function()
-			local ti = workspace:FindFirstChild("TrainingInterface")
-			local mag = ti and ti:FindFirstChild("Magic")
-			return mag and mag:FindFirstChild("14") or nil
-		end)
-		return ok and res or nil
-	end
-	
-	local function resolveMagic13()
-		local ok, res = pcall(function()
-			local ti = workspace:FindFirstChild("TrainingInterface")
-			local mag = ti and ti:FindFirstChild("Magic")
-			return mag and mag:FindFirstChild("13") or nil
-		end)
-		return ok and res or nil
-	end
-	
-	local function resolveMagic12()
-		local ok, res = pcall(function()
-			local ti = workspace:FindFirstChild("TrainingInterface")
-			local mag = ti and ti:FindFirstChild("Magic")
-			return mag and mag:FindFirstChild("12") or nil
-		end)
-		return ok and res or nil
-	end
-
-	local function resolvePsychicTree()
-		local ok, res = pcall(function()
-			local gm = workspace:FindFirstChild("GameMap")
-			local ug = gm and gm:FindFirstChild("Underground")
-			local c = ug and ug:FindFirstChild("R237G234B234")
-			local child5 = c and c:GetChildren()[5]
-			local mdl = child5 and child5:FindFirstChild("Model")
-			local tree = mdl and mdl:FindFirstChild("Tree3")
-			return tree and tree:FindFirstChild("Trunk") or nil
-		end)
-		return ok and res or nil
-	end
-	
-	local function resolvePsychic28()
-		local ok, res = pcall(function()
-			local ti = workspace:FindFirstChild("TrainingInterface")
-			local psy = ti and ti:FindFirstChild("Psychics")
-			return psy and psy:FindFirstChild("28") or nil
-		end)
-		return ok and res or nil
-	end
-	
-	local function resolvePsychic27()
-		local ok, res = pcall(function()
-			local ti = workspace:FindFirstChild("TrainingInterface")
-			local psy = ti and ti:FindFirstChild("Psychics")
-			return psy and psy:FindFirstChild("27") or nil
-		end)
-		return ok and res or nil
-	end
-	
-	local function resolvePsychic24()
-		local ok, res = pcall(function()
-			local ti = workspace:FindFirstChild("TrainingInterface")
-			local psy = ti and ti:FindFirstChild("Psychics")
-			return psy and psy:FindFirstChild("24") or nil
-		end)
-		return ok and res or nil
-	end
-	
-	local function resolvePsychic23()
-		local ok, res = pcall(function()
-			local ti = workspace:FindFirstChild("TrainingInterface")
-			local psy = ti and ti:FindFirstChild("Psychics")
-			return psy and psy:FindFirstChild("23") or nil
-		end)
-		return ok and res or nil
-	end
-	
-	local function resolvePsychic22()
-		local ok, res = pcall(function()
-			local ti = workspace:FindFirstChild("TrainingInterface")
-			local psy = ti and ti:FindFirstChild("Psychics")
-			return psy and psy:FindFirstChild("22") or nil
-		end)
-		return ok and res or nil
-	end
-
-	-- Best area teleport functions
-	local function bestDefenseTeleport()
-		local stats = ReplicatedStorage:WaitForChild("Data"):WaitForChild(LocalPlayer.Name):WaitForChild("Stats")
-		local v = stats and stats:FindFirstChild("Defense") and stats.Defense.Value or 0
-		local zones = {
-			{ req = 1e20, getter = resolveHeavensDoorPart },
-			{ req = 1e19, getter = resolveUndergroundQDoorPart },
-			{ req = 1e18, getter = resolveIceCrystalPart },
-			{ req = 1e17, getter = resolveCatacombsCityPart },
-			{ req = 1e16, getter = resolveHellMapUnion },
-		}
-		for _, z in ipairs(zones) do
-			if v >= z.req then local inst = z.getter(); if inst then tpTo(inst) return end end
-		end
-	end
-
-	local function bestPowerTeleport()
-		local stats = ReplicatedStorage:WaitForChild("Data"):WaitForChild(LocalPlayer.Name):WaitForChild("Stats")
-		local v = stats and stats:FindFirstChild("Power") and stats.Power.Value or 0
-		local zones = {
-			{ req = 1e20, getter = resolveFireCrystalPart },
-			{ req = 1e19, getter = resolvePower30 },
-			{ req = 1e18, getter = resolveHellMapPower },
-			{ req = 1e17, getter = resolvePower28 },
-			{ req = 1e16, getter = resolveMeteoriteOrb },
-		}
-		for _, z in ipairs(zones) do
-			if v >= z.req then local inst = z.getter(); if inst then tpTo(inst) return end end
-		end
-	end
-
-	local function bestMagicTeleport()
-		local stats = ReplicatedStorage:WaitForChild("Data"):WaitForChild(LocalPlayer.Name):WaitForChild("Stats")
-		local v = stats and stats:FindFirstChild("Magic") and stats.Magic.Value or 0
-		local zones = {
-			{ req = 1e20, getter = resolveMagicPart },
-			{ req = 1e19, getter = resolveMagic15 },
-			{ req = 1e18, getter = resolveMagic14 },
-			{ req = 1e17, getter = resolveMagic13 },
-			{ req = 5e15, getter = resolveMagic12 },
-		}
-		for _, z in ipairs(zones) do
-			if v >= z.req then local inst = z.getter(); if inst then tpTo(inst) return end end
-		end
-	end
-
-	local function bestPsychicTeleport()
-		local stats = ReplicatedStorage:WaitForChild("Data"):WaitForChild(LocalPlayer.Name):WaitForChild("Stats")
-		local v = stats and stats:FindFirstChild("Psychics") and stats.Psychics.Value or 0
-		local zones = {
-			{ req = 1e20, getter = resolvePsychicTree },
-			{ req = 1e19, getter = resolvePsychic28 },
-			{ req = 1e18, getter = resolvePsychic27 },
-			{ req = 1e17, getter = resolvePsychic24 },
-			{ req = 5e16, getter = resolvePsychic23 },
-			{ req = 5e15, getter = resolvePsychic22 },
-		}
-		for _, z in ipairs(zones) do
-			if v >= z.req then local inst = z.getter(); if inst then tpTo(inst) return end end
-		end
-	end
-
-	-- Create buttons
-	createButton("Dark Exotic Store", function()
-		local p = workspace:FindFirstChild("Pads")
-		local s2 = p and p:FindFirstChild("ExoticStore2")
-		local pad = s2 and s2:FindFirstChild("1")
-		tpTo(pad)
-	end, 30)
-
-	createButton("Best Defense Area", bestDefenseTeleport, 65)
-	createButton("Best Power Area", bestPowerTeleport, 100)
-	createButton("Best Magic Area", bestMagicTeleport, 135)
-	createButton("Best Psychic Area", bestPsychicTeleport, 170)
+		local char=LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+		pcall(function()char:PivotTo(cf)end)
+	end,205)
 end
 
 local AA={inv=nil,res=nil,fly=nil}
@@ -2052,45 +1534,19 @@ end
 local HExp
 local function resolvePart(which)
 	local path=which=='low'and(getgenv and getgenv().HealthPart15Path)or(getgenv and getgenv().HealthPart95Path)
-	
-	-- Handle custom workspace paths like "workspace:GetChildren()[96]:GetChildren()[6]"
 	if type(path)=='string' and path:find('workspace:') then
-		local success, result = pcall(function()
-			-- Parse workspace:GetChildren()[96]:GetChildren()[6] format
-			local indices = {}
-			for index in path:gmatch('%[(%d+)%]') do
-				table.insert(indices, tonumber(index))
-			end
-			
-			if #indices >= 2 then
-				-- workspace:GetChildren()[96]:GetChildren()[6] format
-				local container = workspace:GetChildren()[indices[1]]
-				if container then
-					return container:GetChildren()[indices[2]]
-				end
-			elseif #indices == 1 and path:find('workspace:GetChildren()') then
-				-- workspace:GetChildren()[index] format
-				return workspace:GetChildren()[indices[1]]
-			end
+		local success,result=pcall(function()
+			local indices={}for index in path:gmatch('%[(%d+)%]') do table.insert(indices,tonumber(index))end
+			if #indices>=2 then local container=workspace:GetChildren()[indices[1]];if container then return container:GetChildren()[indices[2]] end
+			elseif #indices==1 and path:find('workspace:GetChildren()') then return workspace:GetChildren()[indices[1]] end
 			return nil
 		end)
-		
-		if success and result then
-			return result
-		end
+		if success and result then return result end
 	end
-	
-	-- Handle workspace.CatacombsCity format with loadstring (legacy support)
-	if type(path)=='string' and path:find("workspace.CatacombsCity") then
-		local success, result = pcall(function()
-			return loadstring("return " .. path)()
-		end)
-		if success and result then
-			return result
-		end
+	if type(path)=='string' and path:match('^workspace%.') then
+		local success,result=pcall(function()return loadstring('return '..path)() end)
+		if success and result then return result end
 	end
-	
-	-- Fallback to original CatacombsCity method
 	local city=workspace:FindFirstChild('CatacombsCity');if not city then return nil end
 	local kids=city:GetChildren()
 	local idx=tonumber(type(path)=='string'and path:match('%[(%d+)%]')or nil);if not idx then idx=(which=='low')and 2145 or 2389 end
@@ -2136,7 +1592,6 @@ local function TGamma(on)cfg.GammaAimbot=on;save();getgenv().GammaAimbot=on
 	end
 end
 
--- ADD THE TInfiniteZoom FUNCTION HERE
 local function TInfiniteZoom(on)
 	cfg.InfiniteZoom=on;save();getgenv().InfiniteZoom=on
 	if on then
@@ -2154,153 +1609,67 @@ local function TInfiniteZoom(on)
 	end
 end
 
--- Potion consumption functions
+-- Potion consumption
 local function consumePotion(statType)
-    local Players = game:GetService("Players")
-    local ReplicatedStorage = game:GetService("ReplicatedStorage")
-    local LocalPlayer = Players.LocalPlayer
-    
-    -- Paths
-    local inventoryList = LocalPlayer.PlayerGui.Frames.Inventory.Content.Inventory.List.List
-    local equipRemote = ReplicatedStorage:WaitForChild("Events"):WaitForChild("Inventory"):WaitForChild("EquipItem")
-    
-    -- List of valid potion names for each stat
-local potionLists = {
-    Power = {
-        ["Power Barrel"] = true,
-        ["Power Bottle"] = true,
-        ["Power Crate"] = true,
-        ["Power Drink"] = true,
-        ["Power Potion"] = true
-    },
-    Health = {
-        ["Health Barrel"] = true,
-        ["Health Bottle"] = true,
-        ["Health Crate"] = true,
-        ["Health Drink"] = true,
-        ["Health Potion"] = true
-    },
-    Defense = {
-        ["Defense Barrel"] = true,
-        ["Defense Bottle"] = true,
-        ["Defense Crate"] = true,
-        ["Defense Drink"] = true,
-        ["Defense Potion"] = true
-    },
-    Psychic = {
-        ["Psychics Barrel"] = true,
-        ["Psychics Bottle"] = true,
-        ["Psychics Crate"] = true,
-        ["Psychics Drink"] = true,
-        ["Psychics Potion"] = true
-    },
-    Magic = {
-        ["Magic Barrel"] = true,
-        ["Magic Bottle"] = true,
-        ["Magic Crate"] = true,
-        ["Magic Drink"] = true,
-        ["Magic Potion"] = true
-    },
-    Mobility = {
-        ["Mobility Barrel"] = true,
-        ["Mobility Bottle"] = true,
-        ["Mobility Crate"] = true,
-        ["Mobility Drink"] = true,
-        ["Mobility Potion"] = true
-    },
-    Super = {
-        ["Super Barrel"] = true,
-        ["Super Bottle"] = true,
-        ["Super Crate"] = true,
-        ["Super Drink"] = true,
-        ["Super Potion"] = true
-    }
-}
-    
-    while getgenv()["AutoConsume" .. statType] do
-        task.wait(1) -- check every second
-        for _, item in pairs(inventoryList:GetChildren()) do
-            if item:FindFirstChild("ItemName") and item:FindFirstChild("ID") then
-                local itemName = item.ItemName.Text
-                if potionLists[statType][itemName] then
-                    local id = tonumber(item.ID.Value)
-                    if id then
-                        print("Using " .. statType .. " potion:", itemName, "ID:", id)
-                        equipRemote:FireServer(id)
-                        task.wait(0.1) -- wait 60s before using another potion
-                    end
-                end
-            end
-        end
-    end
+	local Players=game:GetService("Players");local ReplicatedStorage=game:GetService("ReplicatedStorage");local LocalPlayer=Players.LocalPlayer
+	local inventoryList=LocalPlayer.PlayerGui.Frames.Inventory.Content.Inventory.List.List
+	local equipRemote=ReplicatedStorage:WaitForChild("Events"):WaitForChild("Inventory"):WaitForChild("EquipItem")
+	local potionLists={Power={["Power Barrel"]=true,["Power Bottle"]=true,["Power Crate"]=true,["Power Drink"]=true,["Power Potion"]=true},Health={["Health Barrel"]=true,["Health Bottle"]=true,["Health Crate"]=true,["Health Drink"]=true,["Health Potion"]=true},Defense={["Defense Barrel"]=true,["Defense Bottle"]=true,["Defense Crate"]=true,["Defense Drink"]=true,["Defense Potion"]=true},Psychic={["Psychics Barrel"]=true,["Psychics Bottle"]=true,["Psychics Crate"]=true,["Psychics Drink"]=true,["Psychics Potion"]=true},Magic={["Magic Barrel"]=true,["Magic Bottle"]=true,["Magic Crate"]=true,["Magic Drink"]=true,["Magic Potion"]=true},Mobility={["Mobility Barrel"]=true,["Mobility Bottle"]=true,["Mobility Crate"]=true,["Mobility Drink"]=true,["Mobility Potion"]=true},Super={["Super Barrel"]=true,["Super Bottle"]=true,["Super Crate"]=true,["Super Drink"]=true,["Super Potion"]=true}}
+	while getgenv()["AutoConsume"..statType] do
+		task.wait(1)
+		for _,item in pairs(inventoryList:GetChildren()) do
+			if item:FindFirstChild("ItemName") and item:FindFirstChild("ID") then
+				local itemName=item.ItemName.Text
+				if potionLists[statType][itemName] then
+					local id=tonumber(item.ID.Value)
+					if id then pcall(function()equipRemote:FireServer(id)end) task.wait(0.1) end
+				end
+			end
+		end
+	end
 end
-
--- Toggle functions for each stat
-local function TConsumePower(on)
-    cfg.AutoConsumePower = on
-    save()
-    getgenv().AutoConsumePower = on
-    if on then
-        task.spawn(function() consumePotion("Power") end)
-    end
-end
-
-local function TConsumeHealth(on)
-    cfg.AutoConsumeHealth = on
-    save()
-    getgenv().AutoConsumeHealth = on
-    if on then
-        task.spawn(function() consumePotion("Health") end)
-    end
-end
-
-local function TConsumeDefense(on)
-    cfg.AutoConsumeDefense = on
-    save()
-    getgenv().AutoConsumeDefense = on
-    if on then
-        task.spawn(function() consumePotion("Defense") end)
-    end
-end
-
-local function TConsumePsychic(on)
-    cfg.AutoConsumePsychic = on
-    save()
-    getgenv().AutoConsumePsychic = on
-    if on then
-        task.spawn(function() consumePotion("Psychic") end)
-    end
-end
-
-local function TConsumeMagic(on)
-    cfg.AutoConsumeMagic = on
-    save()
-    getgenv().AutoConsumeMagic = on
-    if on then
-        task.spawn(function() consumePotion("Magic") end)
-    end
-end
-
-local function TConsumeMobility(on)
-    cfg.AutoConsumeMobility = on
-    save()
-    getgenv().AutoConsumeMobility = on
-    if on then
-        task.spawn(function() consumePotion("Mobility") end)
-    end
-end
-
-local function TConsumeSuper(on)
-    cfg.AutoConsumeSuper = on
-    save()
-    getgenv().AutoConsumeSuper = on
-    if on then
-        task.spawn(function() consumePotion("Super") end)
-    end
-end
+local function TConsumePower(on)cfg.AutoConsumePower=on;save();getgenv().AutoConsumePower=on;if on then task.spawn(function()consumePotion("Power")end)end end
+local function TConsumeHealth(on)cfg.AutoConsumeHealth=on;save();getgenv().AutoConsumeHealth=on;if on then task.spawn(function()consumePotion("Health")end)end end
+local function TConsumeDefense(on)cfg.AutoConsumeDefense=on;save();getgenv().AutoConsumeDefense=on;if on then task.spawn(function()consumePotion("Defense")end)end end
+local function TConsumePsychic(on)cfg.AutoConsumePsychic=on;save();getgenv().AutoConsumePsychic=on;if on then task.spawn(function()consumePotion("Psychic")end)end end
+local function TConsumeMagic(on)cfg.AutoConsumeMagic=on;save();getgenv().AutoConsumeMagic=on;if on then task.spawn(function()consumePotion("Magic")end)end end
+local function TConsumeMobility(on)cfg.AutoConsumeMobility=on;save();getgenv().AutoConsumeMobility=on;if on then task.spawn(function()consumePotion("Mobility")end)end end
+local function TConsumeSuper(on)cfg.AutoConsumeSuper=on;save();getgenv().AutoConsumeSuper=on;if on then task.spawn(function()consumePotion("Super")end)end end
 
 local C1=Section(CScroll,'Mob FireBall Aimbot')
 Toggle(C1,'Universal FireBall Aimbot','UniversalFireBallAimbot',UFA);Slider(C1,'Universal Fireball Cooldown','universalFireballInterval',0.05,1.0,1.0,function()end)
+
+-- Mob selection UI for Universal Fireball (2 columns, multi-select, green selected)
+mk('TextLabel',{Size=UDim2.new(1,-12,0,22),BackgroundTransparency=1,Text='Select Mobs (Universal Fireball)',TextColor3=Color3.fromRGB(235,235,245),TextXAlignment=Enum.TextXAlignment.Left,TextScaled=true,Font=Enum.Font.GothamBold},C1)
+local MobGrid = mk('Frame',{Size=UDim2.new(1,0,0,0),BackgroundTransparency=1,AutomaticSize=Enum.AutomaticSize.Y},C1)
+local GridLayout = Instance.new('UIGridLayout')
+GridLayout.Parent = MobGrid
+GridLayout.CellPadding = UDim2.new(0,8,0,8)
+GridLayout.CellSize = UDim2.new(0.5,-6,0,32)
+GridLayout.SortOrder = Enum.SortOrder.LayoutOrder
+GridLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+local function paint(btn, selected)btn.BackgroundColor3=selected and Color3.fromRGB(40,140,40) or Color3.fromRGB(36,36,48)end
+local function makeMobButton(name)
+	local b=Instance.new('TextButton')
+	b.Name='Mob_'..name
+	b.Size=UDim2.new(0,0,0,32)
+	b.BackgroundColor3=Color3.fromRGB(36,36,48)
+	b.BorderSizePixel=0
+	b.Text=name
+	b.TextColor3=Color3.fromRGB(235,235,245)
+	b.TextScaled=true
+	b.Font=Enum.Font.Gotham
+	local corner=Instance.new('UICorner');corner.CornerRadius=UDim.new(0,8);corner.Parent=b
+	paint(b,isMobSelected(name))
+	b.Parent=MobGrid
+	b.MouseButton1Click:Connect(function()
+		cfg.UFASelectedMobs[name]=not isMobSelected(name)
+		paint(b,isMobSelected(name))
+		save()
+	end)
+end
+do local names=uniqueMobNames() for _,name in ipairs(names) do makeMobButton(name) end end
+
 Toggle(C1,'FireBall Aimbot Catacombs Preset','FireBallAimbot',CatAimbot);Slider(C1,'Fireball Cooldown','fireballCooldown',0.05,1.0,0.1,function()end)
 Toggle(C1,'FireBall Aimbot City Preset','FireBallAimbotCity',CityAimbot);Slider(C1,'City Fireball Cooldown','cityFireballCooldown',0.05,1.0,0.5,function()end)
 mk('TextLabel',{Size=UDim2.new(1,-12,0,22),BackgroundTransparency=1,Text='Panic',TextColor3=Color3.fromRGB(235,235,245),TextXAlignment=Enum.TextXAlignment.Left,TextScaled=true,Font=Enum.Font.GothamBold},C1)
@@ -2308,6 +1677,8 @@ Toggle(C1,'Smart Panic','SmartPanic',function(on)cfg.SmartPanic=on;getgenv().Sma
 mk('TextLabel',{Size=UDim2.new(1,-12,0,22),BackgroundTransparency=1,Text='Pvp',TextColor3=Color3.fromRGB(235,235,245),TextXAlignment=Enum.TextXAlignment.Left,TextScaled=true,Font=Enum.Font.GothamBold},C1)
 Toggle(C1,'Kill Aura','KillAura',TKA)
 Toggle(C1,'Gamma Ray Aimbot (g key)','GammaAimbot',TGamma)
+Toggle(C1,'Auto Block','AutoBlock',TAutoBlock)
+Toggle(C1,'Combat Log','CombatLog',TCombatLog)
 
 local M1=Section(Move,'Movement Features')
 Toggle(M1,'No Clip','NoClip',TNoClip)
@@ -2323,25 +1694,11 @@ mk('TextLabel',{Size=UDim2.new(1,-12,0,22),BackgroundTransparency=1,Text='Webhoo
 Toggle(U1,'Death Webhook','DeathWebhook',function(on)cfg.DeathWebhook=on;save()end)
 Toggle(U1,'Panic Webhook','PanicWebhook',function(on)cfg.PanicWebhook=on;save()end)
 Toggle(U1,'Stat Webhook (15m)','StatWebhook15m',TStatWH)
-mk('TextLabel',{Size=UDim2.new(1,-12,0,22),BackgroundTransparency=1,Text='Server Hop',TextColor3=Color3.fromRGB(235,235,245),TextXAlignment=Enum.TextXAlignment.Left,TextScaled=true,Font=Enum.Font.GothamBold},U1)
+mk('TextLabel',{Size=UDim2.new(1,-12,0,22),BackgroundTransparency=1,Text='Security',TextColor3=Color3.fromRGB(235,235,245),TextXAlignment=Enum.TextXAlignment.Left,TextScaled=true,Font=Enum.Font.GothamBold},U1)
 Toggle(U1,'Kick On Untrusted Players','KickOnUntrustedPlayers',TKickUntrusted)
-Btn(U1,'Find Low Server',function()
-	local TS=game:GetService('TeleportService');local function find()
-		local place=game.PlaceId;local job=game.JobId;local best,c=nil,nil
-		while true do
-			local url=string.format('https://games.roblox.com/v1/games/%d/servers/Public?sortOrder=Asc&limit=100%s',place,c and('&cursor='..c)or'')
-			local ok,body=pcall(function()return game:HttpGet(url)end);if not ok then break end
-			local d=H:JSONDecode(body);if not d or not d.data then break end
-			for _,s in ipairs(d.data)do if s.id~=job and s.playing<s.maxPlayers then if(not best)or s.playing<best.playing then best=s;if best.playing<=1 then return best end end end end
-			c=d.nextPageCursor;if not c then break end;task.wait(0.1)
-		end;return best
-	end
-	local t=find();if t then TS:TeleportToPlaceInstance(game.PlaceId,t.id,LP) end
-end)
 mk('TextLabel',{Size=UDim2.new(1,-12,0,22),BackgroundTransparency=1,Text='Auto Ability',TextColor3=Color3.fromRGB(235,235,245),TextXAlignment=Enum.TextXAlignment.Left,TextScaled=true,Font=Enum.Font.GothamBold},U1)
 Toggle(U1,'Auto Invisible','AutoInvisible',TInv);Toggle(U1,'Auto Resize','AutoResize',TResize);Toggle(U1,'Auto Fly','AutoFly',TFly)
 mk('TextLabel',{Size=UDim2.new(1,-12,0,22),BackgroundTransparency=1,Text='Guis',TextColor3=Color3.fromRGB(235,235,245),TextXAlignment=Enum.TextXAlignment.Left,TextScaled=true,Font=Enum.Font.GothamBold},U1)
-Toggle(U1,'Stat Gui','StatGui',TStatGui)
 Toggle(U1,'Quick Teleport Gui','QuickTeleports',TQuickTeleports)
 
 local V1=Section(Visual,'Visual Features')
@@ -2370,7 +1727,6 @@ Toggle(P1,'Consume Psychic','AutoConsumePsychic',TConsumePsychic)
 Toggle(P1,'Consume Magic','AutoConsumeMagic',TConsumeMagic)
 Toggle(P1,'Consume Mobility','AutoConsumeMobility',TConsumeMobility)
 Toggle(P1,'Consume Super','AutoConsumeSuper',TConsumeSuper)
-
 local Cfg=Section(Conf,'Configuration')
 local SB=Btn(Cfg,'Save Config',function()save()end)
 local LB=Btn(Cfg,'Load Config',function()
@@ -2392,7 +1748,6 @@ local LB=Btn(Cfg,'Load Config',function()
 	ap(cfg.VendingPotionAutoBuy,function()return getgenv().VendingPotionAutoBuy or false end,TVend)
 	ap(cfg.StatWebhook15m,function()return getgenv().StatWebhook15m or false end,TStatWH)
 	ap(cfg.KillAura,function()return getgenv().KillAura or false end,TKA)
-	ap(cfg.StatGui,function()return getgenv().StatGui or false end,TStatGui)
 	ap(cfg.QuickTeleports,function()return getgenv().QuickTeleports or false end,TQuickTeleports)
 	ap(cfg.AutoInvisible,function()return getgenv().AutoInvisible or false end,TInv)
 	ap(cfg.AutoResize,function()return getgenv().AutoResize or false end,TResize)
@@ -2408,7 +1763,11 @@ local LB=Btn(Cfg,'Load Config',function()
 	ap(cfg.AutoConsumeMagic,function()return getgenv().AutoConsumeMagic or false end,TConsumeMagic)
 	ap(cfg.AutoConsumeMobility,function()return getgenv().AutoConsumeMobility or false end,TConsumeMobility)
 	ap(cfg.AutoConsumeSuper,function()return getgenv().AutoConsumeSuper or false end,TConsumeSuper)
+	ap(cfg.AutoBlock,function()return getgenv().AutoBlock or false end,TAutoBlock)
+	ap(cfg.CombatLog,function()return getgenv().CombatLog or false end,TCombatLog)
 	getgenv().SmartPanic = cfg.SmartPanic and true or false
 end)
 SB.Position=UDim2.new(0,0,0,0);LB.Position=UDim2.new(0,270,0,0)
+local SHK=Btn(Cfg,"Set Hide Key ("..(cfg.HideGUIKey or'RightControl')..")",function()waitingKey=true;SHK.Text='Press any key...'end);SetHideBtn=SHK;SHK.Position=UDim2.new(0,540,0,0)
+local SHK=Btn(Cfg,"Set Hide Key ("..(cfg.HideGUIKey or'RightControl')..")",function()waitingKey=true;SHK.Text='Press any key...'end);SetHideBtn=SHK;SHK.Position=UDim2.new(0,540,0,0)
 local SHK=Btn(Cfg,"Set Hide Key ("..(cfg.HideGUIKey or'RightControl')..")",function()waitingKey=true;SHK.Text='Press any key...'end);SetHideBtn=SHK;SHK.Position=UDim2.new(0,540,0,0)
