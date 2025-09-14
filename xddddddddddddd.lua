@@ -196,8 +196,8 @@ local function mk(t,pr,par)local i=Instance.new(t);for k,v in pairs(pr or{})do i
 do
 	local player=LP
 	local playerGui=player:WaitForChild("PlayerGui")
-	local function formatNumber(n)n=tonumber(n)or 0;if n>=1e18 then return string.format('%.3fqn',n/1e18)end;if n>=1e15 then return string.format('%.3fqd',n/1e15)end;if n>=1e12 then return string.format('%.3ft',n/1e12)end
-		if n>=1e9 then return string.format('%.3fb',n/1e9)end;if n>=1e6 then return string.format('%.3fm',n/1e6)end;if n>=1e3 then return string.format('%.3fk',n/1e3)end return tostring(n)end
+	local function formatNumber(n)n=tonumber(n)or 0;if n>=1e18 then return string.format('%.4fqn',n/1e18)end;if n>=1e15 then return string.format('%.4fqd',n/1e15)end;if n>=1e12 then return string.format('%.4ft',n/1e12)end
+		if n>=1e9 then return string.format('%.4fb',n/1e9)end;if n>=1e6 then return string.format('%.4fm',n/1e6)end;if n>=1e3 then return string.format('%.4fk',n/1e3)end return tostring(n)end
 	local function getNumberValue(c,n)if not c then return 0 end local v=c:FindFirstChild(n)if v and v:IsA('ValueBase')then return tonumber(v.Value)or 0 end return 0 end
 	local function getStringValue(c,n)if not c then return '' end local v=c:FindFirstChild(n)if v and v:IsA('ValueBase')then return tostring(v.Value or'')end return '' end
 	local function lightenColor(color,factor)factor=math.clamp(factor or 0.4,0,1)local r=color.R+(1-color.R)*factor local g=color.G+(1-color.G)*factor local b=color.B+(1-color.B)*factor return Color3.new(r,g,b)end
@@ -221,7 +221,7 @@ do
 	local function getPotionBonus(index)local hud=playerGui:FindFirstChild("HUD");if not hud then return "" end local topUi=hud:FindFirstChild("TopUi");if not topUi then return "" end local rank=topUi:FindFirstChild("Rank");if not rank then return "" end local data=rank:FindFirstChild("Data");if not data then return "" end local potionEffect=data:FindFirstChild("PotionEffect");if not potionEffect then return "" end local slot=potionEffect:FindFirstChild(tostring(index));if not slot then return "" end local design=slot:FindFirstChild("Design");if not design then return "" end local bonus=design:FindFirstChild("Bonus");if not bonus then return "" end if bonus:IsA("ValueBase")then return tostring(bonus.Value or"")end if bonus:IsA("TextLabel")or bonus:IsA("TextBox")or bonus:IsA("TextButton")then return tostring(bonus.Text or"")end return "" end
 	local initialTotalPower=getNumberValue(statsFolder,"TotalPower")
 	local function updateBoosts()for i=1,6 do local bonusText=getPotionBonus(i);local lbl=boostLabels[i];if bonusText~=""then lbl.Text=string.format("%s %s",BOOST_EMOJIS[i],bonusText);lbl.Visible=true else lbl.Text="";lbl.Visible=false end end end
-	local function updateStats()local s=statsFolder;local statTraining=getStringValue(s,"StatTraining");local trainingTick=getNumberValue(s,"TrainingTick");if statTraining==""then labels.Training.Text="📋 Training None";setTrainingDividersColor(nil)else labels.Training.Text=string.format("📋 Training %s +%s Per Tick",statTraining,formatNumber(trainingTick));setTrainingDividersColor(statTraining)end
+	local function updateStats()local s=statsFolder;local statTraining=getStringValue(s,"StatTraining");local rawTick=getNumberValue(s,"TrainingTick");local trainingTick=rawTick;if rawTick>=9e12 and rawTick<1e13 then trainingTick=rawTick*10 end;if statTraining==""then labels.Training.Text="📋 Training None";setTrainingDividersColor(nil)else labels.Training.Text=string.format("📋 Training %s +%s Per Tick",statTraining,formatNumber(trainingTick));setTrainingDividersColor(statTraining)end
 		local power=getNumberValue(s,"Power");local health=getNumberValue(s,"Health");local defense=getNumberValue(s,"Defense");local psychics=getNumberValue(s,"Psychics");local magic=getNumberValue(s,"Magic");local mobility=getNumberValue(s,"Mobility");local totalPower=getNumberValue(s,"TotalPower");local tokens=getNumberValue(s,"Tokens")
 		labels.Tokens.Text="💰 Tokens: "..formatNumber(tokens);labels.Power.Text="💪 Power: "..formatNumber(power);labels.Health.Text="❤️ Health: "..formatNumber(health);labels.Defense.Text="🛡️ Defense: "..formatNumber(defense);labels.Psychics.Text="🔮 Psychics: "..formatNumber(psychics);labels.Magic.Text="✨ Magic: "..formatNumber(magic);labels.Mobility.Text="💨 Mobility: "..formatNumber(mobility);labels.TotalPower.Text="📊 Total Power: "..formatNumber(totalPower)
 		local earned=math.max(0,totalPower-(initialTotalPower or totalPower));labels.TotalPowerEarned.Text="📈 Total Power Earned: "..formatNumber(earned)
@@ -718,10 +718,10 @@ local function TPlayerESP(on)
 
 		for _,pl in ipairs(P:GetPlayers()) do
 			if pl ~= LP then
-					local char = pl.Character
+				local char = pl.Character
 					local HumanoidRootPart = char and char:FindFirstChild('HumanoidRootPart')
 					local Humanoid = char and char:FindFirstChildOfClass('Humanoid')
-					local rec = ensure(pl)
+				local rec = ensure(pl)
 					if HumanoidRootPart and Humanoid and Humanoid.Health > 0 then
 						local Position, OnScreen = Cam:WorldToViewportPoint(HumanoidRootPart.Position)
 						if OnScreen then
@@ -734,7 +734,7 @@ local function TPlayerESP(on)
 							-- Update box
 							rec.b.Size = Vector2.new(width, height)
 							rec.b.Position = Vector2.new(xPosition, yPosition)
-							rec.b.Visible = true
+						rec.b.Visible = true
 
 						local clanName, clanColor = getPlayerClan(pl)
 						rec.t.Text = pl.Name
@@ -1059,11 +1059,11 @@ local function UFA(on)
 											bestD = d
 											bestPart = p
 											foundMob = true
-										end 
-									end 
 								end
 							end
 						end
+					end
+				end
 					end
 				end
 				
@@ -1454,10 +1454,10 @@ local function TDualExotic(on)
 				local timeSinceLastRegularStore = currentTime - lastRegularStoreTime
 				if timeSinceLastRegularStore >= REGULAR_STORE_INTERVAL and pad1 and gui1 and remote1 then
 					if safeTeleport(pad1.CFrame) then
-						buyPotions(gui1, remote1, false)
-						humanoidRootPart.CFrame = originalCFrame
+					buyPotions(gui1, remote1, false)
+					humanoidRootPart.CFrame = originalCFrame
 						lastRegularStoreTime = currentTime
-						task.wait(3)
+					task.wait(3)
 					end
 				end
 
@@ -1465,10 +1465,10 @@ local function TDualExotic(on)
 				local timeSinceLastDarkStore = currentTime - lastDarkStoreTime
 				if timeSinceLastDarkStore >= DARK_STORE_INTERVAL and pad2 and gui2 and remote2 then
 					if safeTeleport(pad2.CFrame) then
-						buyPotions(gui2, remote2, true)
-						humanoidRootPart.CFrame = originalCFrame
+					buyPotions(gui2, remote2, true)
+					humanoidRootPart.CFrame = originalCFrame
 						lastDarkStoreTime = currentTime
-						task.wait(3)
+					task.wait(3)
 					end
 				end
 			end)
@@ -1801,7 +1801,7 @@ local function makeMobButton(name)
 		if not table.find(cfg.UFAOrderedMobs, name) then
 			table.insert(cfg.UFAOrderedMobs, name)
 			updateOrderDisplay()
-			save()
+		save()
 		end
 	end)
 	
