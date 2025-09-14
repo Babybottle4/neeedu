@@ -196,8 +196,8 @@ local function mk(t,pr,par)local i=Instance.new(t);for k,v in pairs(pr or{})do i
 do
 	local player=LP
 	local playerGui=player:WaitForChild("PlayerGui")
-	local function formatNumber(n)n=tonumber(n)or 0;if n>=1e18 then return string.format('%.2fqn',n/1e18)end;if n>=1e15 then return string.format('%.2fqd',n/1e15)end;if n>=1e12 then return string.format('%.2ft',n/1e12)end
-		if n>=1e9 then return string.format('%.2fb',n/1e9)end;if n>=1e6 then return string.format('%.2fm',n/1e6)end;if n>=1e3 then return string.format('%.2fk',n/1e3)end return tostring(n)end
+	local function formatNumber(n)n=tonumber(n)or 0;if n>=1e18 then return string.format('%.3fqn',n/1e18)end;if n>=1e15 then return string.format('%.3fqd',n/1e15)end;if n>=1e12 then return string.format('%.3ft',n/1e12)end
+		if n>=1e9 then return string.format('%.3fb',n/1e9)end;if n>=1e6 then return string.format('%.3fm',n/1e6)end;if n>=1e3 then return string.format('%.3fk',n/1e3)end return tostring(n)end
 	local function getNumberValue(c,n)if not c then return 0 end local v=c:FindFirstChild(n)if v and v:IsA('ValueBase')then return tonumber(v.Value)or 0 end return 0 end
 	local function getStringValue(c,n)if not c then return '' end local v=c:FindFirstChild(n)if v and v:IsA('ValueBase')then return tostring(v.Value or'')end return '' end
 	local function lightenColor(color,factor)factor=math.clamp(factor or 0.4,0,1)local r=color.R+(1-color.R)*factor local g=color.G+(1-color.G)*factor local b=color.B+(1-color.B)*factor return Color3.new(r,g,b)end
