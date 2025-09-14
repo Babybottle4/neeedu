@@ -36,19 +36,30 @@ local cfg={
 	AutoInvisible=false,AutoResize=false,AutoFly=false,HealthExploit=false,GammaAimbot=false,InfiniteZoom=false,
 	AutoConsumePower=false,AutoConsumeHealth=false,AutoConsumeDefense=false,AutoConsumePsychic=false,AutoConsumeMagic=false,AutoConsumeMobility=false,AutoConsumeSuper=false,QuickTeleports=false,
 	KickOnUntrustedPlayers=false,AutoBlock=false,CombatLog=false,
-	UFASelectedMobs={},
+	UFAOrderedMobs={},
 	fireballCooldown=0.1,cityFireballCooldown=0.5,universalFireballInterval=1.0,HideGUIKey='RightControl',
 }
 local function save()pcall(function()writefile('SuperPowerLeague_Config.json',H:JSONEncode(cfg))end)end
 local function load()pcall(function()if isfile('SuperPowerLeague_Config.json')then for k,v in pairs(H:JSONDecode(readfile('SuperPowerLeague_Config.json')))do cfg[k]=v end end end)end
 load()
+-- Migration from old UFASelectedMobs to new UFAOrderedMobs
+if cfg.UFASelectedMobs and type(cfg.UFASelectedMobs) == "table" then
+	cfg.UFAOrderedMobs = {}
+	for mobName, selected in pairs(cfg.UFASelectedMobs) do
+		if selected then table.insert(cfg.UFAOrderedMobs, mobName) end
+	end
+	cfg.UFASelectedMobs = nil
+	save()
+end
 if type(cfg.UFASelectedMob)=="string" and cfg.UFASelectedMob~="" then
-	cfg.UFASelectedMobs = cfg.UFASelectedMobs or {}
-	cfg.UFASelectedMobs[cfg.UFASelectedMob]=true
+	cfg.UFAOrderedMobs = cfg.UFAOrderedMobs or {}
+	if not table.find(cfg.UFAOrderedMobs, cfg.UFASelectedMob) then
+		table.insert(cfg.UFAOrderedMobs, cfg.UFASelectedMob)
+	end
 	cfg.UFASelectedMob=nil
 	save()
 end
-cfg.UFASelectedMobs = cfg.UFASelectedMobs or {}
+cfg.UFAOrderedMobs = cfg.UFAOrderedMobs or {}
 local targetAttempts={}
 
 -- persistent saved teleport
@@ -571,7 +582,7 @@ local function uniqueMobNames()local seen, list = {}, {}
 	for _,name in pairs(BUCKET_NAME) do if name and name~="" and not seen[name] then seen[name]=true;table.insert(list,name) end end
 	table.sort(list);return list
 end
-local function isMobSelected(name)return cfg.UFASelectedMobs and cfg.UFASelectedMobs[name]==true end
+local function isMobSelected(name)return cfg.UFAOrderedMobs and table.find(cfg.UFAOrderedMobs, name) ~= nil end
 
 -- Player ESP (old visuals) with robust cleanup to prevent stuck overlays
 local function TPlayerESP(on)
@@ -665,13 +676,13 @@ local function TPlayerESP(on)
 
 	local function mkRec()
 		local b = Drawing.new('Square'); b.Filled=false; b.Thickness=2; b.Visible=false
-		local t = Drawing.new('Text'); t.Size=24; t.Center=true; t.Outline=true; t.OutlineColor=Color3.new(0,0,0); t.Visible=false
-		local clan = Drawing.new('Text'); clan.Size=20; clan.Center=true; clan.Outline=true; clan.OutlineColor=Color3.new(0,0,0); clan.Visible=false
-		local health = Drawing.new('Text'); health.Size=22; health.Center=true; health.Outline=true; health.OutlineColor=Color3.new(0,0,0); health.Color=Color3.fromRGB(100,255,100); health.Visible=false
-		local defense = Drawing.new('Text'); defense.Size=20; defense.Center=true; defense.Outline=true; defense.OutlineColor=Color3.new(0,0,0); defense.Color=Color3.fromRGB(0,150,255); defense.Visible=false
-		local power = Drawing.new('Text'); power.Size=20; power.Center=true; power.Outline=true; power.OutlineColor=Color3.new(0,0,0); power.Color=Color3.fromRGB(255,50,50); power.Visible=false
-		local magic = Drawing.new('Text'); magic.Size=20; magic.Center=true; magic.Outline=true; magic.OutlineColor=Color3.new(0,0,0); magic.Color=Color3.fromRGB(255,100,255); magic.Visible=false
-		local rep = Drawing.new('Text'); rep.Size=20; rep.Center=true; rep.Outline=true; rep.OutlineColor=Color3.new(0,0,0); rep.Color=Color3.fromRGB(255,255,255); rep.Visible=false
+		local t = Drawing.new('Text'); t.Size=20; t.Center=true; t.Outline=true; t.OutlineColor=Color3.new(0,0,0); t.Visible=false
+		local clan = Drawing.new('Text'); clan.Size=16; clan.Center=true; clan.Outline=true; clan.OutlineColor=Color3.new(0,0,0); clan.Visible=false
+		local health = Drawing.new('Text'); health.Size=16; health.Center=true; health.Outline=true; health.OutlineColor=Color3.new(0,0,0); health.Color=Color3.fromRGB(100,255,100); health.Visible=false
+		local defense = Drawing.new('Text'); defense.Size=16; defense.Center=true; defense.Outline=true; defense.OutlineColor=Color3.new(0,0,0); defense.Color=Color3.fromRGB(0,150,255); defense.Visible=false
+		local power = Drawing.new('Text'); power.Size=16; power.Center=true; power.Outline=true; power.OutlineColor=Color3.new(0,0,0); power.Color=Color3.fromRGB(255,50,50); power.Visible=false
+		local magic = Drawing.new('Text'); magic.Size=16; magic.Center=true; magic.Outline=true; magic.OutlineColor=Color3.new(0,0,0); magic.Color=Color3.fromRGB(255,100,255); magic.Visible=false
+		local rep = Drawing.new('Text'); rep.Size=16; rep.Center=true; rep.Outline=true; rep.OutlineColor=Color3.new(0,0,0); rep.Color=Color3.fromRGB(255,255,255); rep.Visible=false
 		return {b=b,t=t,clan=clan,health=health,defense=defense,power=power,magic=magic,rep=rep}
 	end
 
@@ -707,32 +718,32 @@ local function TPlayerESP(on)
 
 		for _,pl in ipairs(P:GetPlayers()) do
 			if pl ~= LP then
-				local char = pl.Character
-				local head = char and char:FindFirstChild('Head')
-				local hum = char and char:FindFirstChildOfClass('Humanoid')
-				local rec = ensure(pl)
-				if head and hum and hum.Health > 0 then
-					local pos, vis = Cam:WorldToViewportPoint(head.Position)
-					if vis then
-						local d = (Cam.CFrame.Position - head.Position).Magnitude
-						local sz = math.clamp((100/math.max(d,1))*100, 20, 80)
-						local col = Color3.fromHSV((tick()*0.2)%1, 1, 1)
-						local boxPos = Vector2.new(pos.X - sz/2, pos.Y - sz/2)
-
-						rec.b.Position = boxPos
-						rec.b.Size = Vector2.new(sz, sz)
-						rec.b.Color = col
-						rec.b.Visible = true
+					local char = pl.Character
+					local HumanoidRootPart = char and char:FindFirstChild('HumanoidRootPart')
+					local Humanoid = char and char:FindFirstChildOfClass('Humanoid')
+					local rec = ensure(pl)
+					if HumanoidRootPart and Humanoid and Humanoid.Health > 0 then
+						local Position, OnScreen = Cam:WorldToViewportPoint(HumanoidRootPart.Position)
+						if OnScreen then
+							-- Working scaling system from esph.lua
+							local scale = 1 / (Position.Z * math.tan(math.rad(Cam.FieldOfView * 0.5)) * 2) * 1000
+							local width, height = math.floor(4.5 * scale), math.floor(6 * scale)
+							local x, y = math.floor(Position.X), math.floor(Position.Y)
+							local xPosition, yPosition = math.floor(x - width * 0.5), math.floor((y - height * 0.5) + (0.5 * scale))
+							
+							-- Update box
+							rec.b.Size = Vector2.new(width, height)
+							rec.b.Position = Vector2.new(xPosition, yPosition)
+							rec.b.Visible = true
 
 						local clanName, clanColor = getPlayerClan(pl)
 						rec.t.Text = pl.Name
-						rec.t.Position = Vector2.new(pos.X, pos.Y - sz/2 - 18)
-						rec.t.Color = col
+						rec.t.Position = Vector2.new(x, yPosition - 25)
 						rec.t.Visible = true
 
 						if clanName then
 							rec.clan.Text = clanName
-							rec.clan.Position = Vector2.new(pos.X, pos.Y - sz/2 - 40)
+							rec.clan.Position = Vector2.new(x, yPosition - 45)
 							rec.clan.Color = clanColor
 							rec.clan.Visible = true
 						else
@@ -748,28 +759,28 @@ local function TPlayerESP(on)
 							rec.health.Visible=false; rec.defense.Visible=false; rec.power.Visible=false; rec.magic.Visible=false
 							rec.rep.Text =(repv==0) and "0" or formatNumber(repv)
 							rec.rep.Color = getRepColor(repv)
-							rec.rep.Position = Vector2.new(pos.X, boxPos.Y + sz/2 + 16)
+							rec.rep.Position = Vector2.new(x, yPosition + height + 16)
 							rec.rep.Visible = true
 						else
 							rec.health.Text = formatNumber(ch).."/"..formatNumber(mh)
-							rec.health.Position = Vector2.new(pos.X, boxPos.Y + sz/2 + 16)
+							rec.health.Position = Vector2.new(x, yPosition + height + 16)
 							rec.health.Visible = true
 
 							rec.defense.Text = formatNumber(defv)
-							rec.defense.Position = Vector2.new(pos.X, boxPos.Y + sz/2 + 38)
+							rec.defense.Position = Vector2.new(x, yPosition + height + 38)
 							rec.defense.Visible = true
 
 							rec.power.Text = formatNumber(powv)
-							rec.power.Position = Vector2.new(pos.X, boxPos.Y + sz/2 + 60)
+							rec.power.Position = Vector2.new(x, yPosition + height + 60)
 							rec.power.Visible = true
 
 							rec.magic.Text = formatNumber(magv)
-							rec.magic.Position = Vector2.new(pos.X, boxPos.Y + sz/2 + 82)
+							rec.magic.Position = Vector2.new(x, yPosition + height + 82)
 							rec.magic.Visible = true
 
 							rec.rep.Text =(repv==0) and "0" or formatNumber(repv)
 							rec.rep.Color = getRepColor(repv)
-							rec.rep.Position = Vector2.new(pos.X, boxPos.Y + sz/2 + 104)
+							rec.rep.Position = Vector2.new(x, yPosition + height + 104)
 							rec.rep.Visible = true
 						end
 					else
@@ -982,32 +993,113 @@ end
 local function fireAt(v3)local a=ev('Events','Other','Ability');pcall(function()a:InvokeServer('Fireball',v3)end)end
 local function UFA(on)
 	getgenv().UniversalFireBallAimbot=on;if not on then return end
+	
+	print('Universal Fireball Aimbot: Starting...')
+	
+	-- Check if we have any mobs selected
+	if not cfg.UFAOrderedMobs or #cfg.UFAOrderedMobs == 0 then
+		print('Universal Fireball Aimbot: No mobs selected!')
+		return
+	end
+	
+	local currentTargetIndex = 1
+	local lastFireballTime = 0
+	local lastTargetMob = nil -- Track last targeted mob to prevent duplicates
+	local isFiring = false -- Prevent multiple simultaneous fires
+	
 	task.spawn(function()
 		while getgenv().UniversalFireBallAimbot do
-			pcall(function()
-				local enemies=workspace:FindFirstChild('Enemies');if not enemies then return end
-				local _,_,hrp=charHum();if not hrp then return end
-				local hasAny=false;for k,v in pairs(cfg.UFASelectedMobs) do if v then hasAny=true break end end
-				if not hasAny then return end
-				local myPos=hrp.Position
-				local bestPart,bestD=nil,math.huge
-				for _,bucket in ipairs(enemies:GetChildren()) do
-					for _,mob in ipairs(bucket:GetChildren()) do
+			if isFiring then 
+				task.wait(0.1)
+				continue 
+			end
+			
+			local currentTime = tick()
+			if (currentTime - lastFireballTime) >= (cfg.universalFireballInterval or 1.0) then
+				local targetMobName = cfg.UFAOrderedMobs[currentTargetIndex]
+				if targetMobName == lastTargetMob then
+					-- Skip to next mob to avoid duplicates
+					currentTargetIndex = currentTargetIndex + 1
+					if currentTargetIndex > #cfg.UFAOrderedMobs then 
+						currentTargetIndex = 1 
+					end
+					task.wait(0.2)
+					continue
+				end
+				
+				local enemies = workspace:FindFirstChild('Enemies')
+				if not enemies then 
+					task.wait(0.5)
+					continue 
+				end
+				
+				local _, _, hrp = charHum()
+				if not hrp then 
+					task.wait(0.5)
+					continue 
+				end
+				
+				local myPos = hrp.Position
+				local bestPart, bestD = nil, math.huge
+				local foundMob = false
+				
+				-- Look for the current target mob type
+				for _, bucket in ipairs(enemies:GetChildren()) do
+					for _, mob in ipairs(bucket:GetChildren()) do
 						if mob:IsA('Model') then
-							local dtag=mob:FindFirstChild('Dead');local alive=(not dtag or dtag.Value~=true)
+							local dtag = mob:FindFirstChild('Dead')
+							local alive = (not dtag or dtag.Value ~= true)
 							if alive then
-								local targetName=getMobDisplayName(mob)
-								if isMobSelected(targetName) then
-									local p=mob:FindFirstChild('HumanoidRootPart')
-									if p then local d=(myPos-p.Position).Magnitude;if d<bestD then bestD=d;bestPart=p end end
+								local mobName = getMobDisplayName(mob)
+								if mobName == targetMobName then
+									local p = mob:FindFirstChild('HumanoidRootPart')
+									if p then 
+										local d = (myPos - p.Position).Magnitude
+										if d < bestD then 
+											bestD = d
+											bestPart = p
+											foundMob = true
+										end 
+									end 
 								end
 							end
 						end
 					end
 				end
-				if bestPart then fireAt(bestPart.Position) end
-			end)
-			task.wait(math.max(0.01,tonumber(cfg.universalFireballInterval)or 1.0))
+				
+				if foundMob and bestPart then
+					isFiring = true
+					local success = pcall(function() 
+						fireAt(bestPart.Position) 
+					end)
+					
+					if success then
+						lastFireballTime = currentTime
+						lastTargetMob = targetMobName
+						currentTargetIndex = currentTargetIndex + 1
+						if currentTargetIndex > #cfg.UFAOrderedMobs then 
+							currentTargetIndex = 1 
+						end
+						task.wait(1.0) -- Longer wait after successful fire
+					else
+						currentTargetIndex = currentTargetIndex + 1
+						if currentTargetIndex > #cfg.UFAOrderedMobs then 
+							currentTargetIndex = 1 
+						end
+						task.wait(0.5)
+					end
+					isFiring = false
+				else
+					-- No mob of this type found, move to next
+					currentTargetIndex = currentTargetIndex + 1
+					if currentTargetIndex > #cfg.UFAOrderedMobs then 
+						currentTargetIndex = 1 
+					end
+					task.wait(0.3)
+				end
+			else
+				task.wait(0.1)
+			end
 		end
 	end)
 end
@@ -1226,7 +1318,7 @@ local function CityAimbot(on)
 								else
 									print('City Fireball Aimbot: Fired at folder ' .. targetFolderNumber .. ' (' .. currentTargetIndex .. '/5) calculated position ' .. tostring(targetPosition))
 								end
-								lastFireballTime=currentTime
+							lastFireballTime=currentTime
 								lastTargetFolder=targetFolderNumber
 								
 								-- Move to next target
@@ -1240,8 +1332,8 @@ local function CityAimbot(on)
 								task.wait(1.0)
 							else
 								print('City Fireball Aimbot: Failed to fire at folder ' .. targetFolderNumber .. ', moving to next...')
-								currentTargetIndex=currentTargetIndex+1
-								if currentTargetIndex>#targetOrder then currentTargetIndex=1 end
+							currentTargetIndex=currentTargetIndex+1
+							if currentTargetIndex>#targetOrder then currentTargetIndex=1 end
 								task.wait(0.5)
 							end
 							
@@ -1348,26 +1440,38 @@ local function TDualExotic(on)
 			return true
 		end
 
+		local lastDarkStoreTime = 0
+		local DARK_STORE_INTERVAL = 3600 -- 60 minutes in seconds
+		local REGULAR_STORE_INTERVAL = 1200 -- 20 minutes in seconds
+
 		while getgenv().DualExoticShop do
+			local currentTime = tick()
 			local success = pcall(function()
 				local originalCFrame = humanoidRootPart.CFrame
 
+				-- Always try to buy from Exotic Store 1 (every 20 minutes)
 				if pad1 and gui1 and remote1 and safeTeleport(pad1.CFrame) then
 					buyPotions(gui1, remote1, false)
 					humanoidRootPart.CFrame = originalCFrame
 					task.wait(3)
 				end
 
-				if pad2 and gui2 and remote2 and safeTeleport(pad2.CFrame) then
+				-- Only buy from Dark Exotic Store 2 every 60 minutes
+				local timeSinceLastDarkStore = currentTime - lastDarkStoreTime
+				if timeSinceLastDarkStore >= DARK_STORE_INTERVAL and pad2 and gui2 and remote2 then
+					if safeTeleport(pad2.CFrame) then
 					buyPotions(gui2, remote2, true)
 					humanoidRootPart.CFrame = originalCFrame
+						lastDarkStoreTime = currentTime
 					task.wait(3)
+					end
 				end
 			end)
 
 			if not success then task.wait(30) end
 
-			for i=1,1200 do
+			-- Wait 20 minutes before next regular store check
+			for i=1,REGULAR_STORE_INTERVAL do
 				if not getgenv().DualExoticShop then break end
 				task.wait(1)
 			end
@@ -1382,15 +1486,16 @@ end)end end
 local function TStatWH(on)cfg.StatWebhook15m=on;save();getgenv().StatWebhook15m=on;if not on then return end
 	task.spawn(function()
 		local st=RS:WaitForChild('Data'):WaitForChild(LP.Name):WaitForChild('Stats')
-		local op,od,oh,om,oy,omob=st.Power.Value,st.Defense.Value,st.Health.Value,st.Magic.Value,st.Psychics.Value,st.Mobility.Value
+		local op,od,oh,om,oy,omob,ot=st.Power.Value,st.Defense.Value,st.Health.Value,st.Magic.Value,st.Psychics.Value,st.Mobility.Value,st.Tokens.Value
 		local function fmt(n)n=tonumber(n)or 0;if n>=1e18 then return string.format('%.2f',n/1e18)..'QN' end;if n>=1e15 then return string.format('%.2f',n/1e15)..'qd' end;if n>=1e12 then return string.format('%.2f',n/1e12)..'t' end
 			if n>=1e9 then return string.format('%.2f',n/1e9)..'b'end;if n>=1e6 then return string.format('%.2f',n/1e6)..'m'end;if n>=1e3 then return string.format('%.2f',n/1e3)..'k'end return tostring(n)end
+		local function fmtChange(n)local change=tonumber(n)or 0;local sign=change>=0 and '+'or'';return sign..fmt(math.abs(change))end
 		while getgenv().StatWebhook15m do for i=1,900 do if not getgenv().StatWebhook15m then break end task.wait(1)end;if not getgenv().StatWebhook15m then break end
-			local np,nd,nh,nm,ny,nmob=st.Power.Value,st.Defense.Value,st.Health.Value,st.Magic.Value,st.Psychics.Value,st.Mobility.Value
-			if np>op or nd>od or nh>oh or nm>om or ny>oy or nmob>omob then
+			local np,nd,nh,nm,ny,nmob,nt=st.Power.Value,st.Defense.Value,st.Health.Value,st.Magic.Value,st.Psychics.Value,st.Mobility.Value,st.Tokens.Value
+			if np>op or nd>od or nh>oh or nm>om or ny>oy or nmob>omob or nt~=ot then
 				local t=LP.Name..' Stats Gained Last 15 Minutes'
-				local d='💪 **Power:** '..fmt(np)..' → **'..fmt(np-op)..'**\n❤️ **Health:** '..fmt(nh)..' → **'..fmt(nh-oh)..'**\n🛡️ **Defense:** '..fmt(nd)..' → **'..fmt(nd-od)..'**\n🔮 **Psychics:** '..fmt(ny)..' → **'..fmt(ny-oy)..'**\n✨ **Magic:** '..fmt(nm)..' → **'..fmt(nm-om)..'**\n💨 **Mobility:** '..fmt(nmob)..' → **'..fmt(nmob-omob)..'**'
-				webhook('Stat Bot',t,d,nil);op,od,oh,om,oy,omob=np,nd,nh,nm,ny,nmob
+				local d='💪 **Power:** '..fmt(np)..' → **'..fmt(np-op)..'**\n❤️ **Health:** '..fmt(nh)..' → **'..fmt(nh-oh)..'**\n🛡️ **Defense:** '..fmt(nd)..' → **'..fmt(nd-od)..'**\n🔮 **Psychics:** '..fmt(ny)..' → **'..fmt(ny-oy)..'**\n✨ **Magic:** '..fmt(nm)..' → **'..fmt(nm-om)..'**\n💨 **Mobility:** '..fmt(nmob)..' → **'..fmt(nmob-omob)..'**\n💰 **Tokens:** '..fmt(nt)..' → **'..fmtChange(nt-ot)..'**'
+				webhook('Stat Bot',t,d,nil);op,od,oh,om,oy,omob,ot=np,nd,nh,nm,ny,nmob,nt
 			end
 		end
 	end)
@@ -1639,8 +1744,30 @@ local function TConsumeSuper(on)cfg.AutoConsumeSuper=on;save();getgenv().AutoCon
 local C1=Section(CScroll,'Mob FireBall Aimbot')
 Toggle(C1,'Universal FireBall Aimbot','UniversalFireBallAimbot',UFA);Slider(C1,'Universal Fireball Cooldown','universalFireballInterval',0.05,1.0,1.0,function()end)
 
--- Mob selection UI for Universal Fireball (2 columns, multi-select, green selected)
-mk('TextLabel',{Size=UDim2.new(1,-12,0,22),BackgroundTransparency=1,Text='Select Mobs (Universal Fireball)',TextColor3=Color3.fromRGB(235,235,245),TextXAlignment=Enum.TextXAlignment.Left,TextScaled=true,Font=Enum.Font.GothamBold},C1)
+--- Custom Mob Order UI for Universal Fireball
+mk('TextLabel',{Size=UDim2.new(1,-12,0,22),BackgroundTransparency=1,Text='Custom Mob Order (Click mobs to add to sequence)',TextColor3=Color3.fromRGB(235,235,245),TextXAlignment=Enum.TextXAlignment.Left,TextScaled=true,Font=Enum.Font.GothamBold},C1)
+
+-- Current order display
+local OrderLabel = mk('TextLabel',{Size=UDim2.new(1,-12,0,40),BackgroundTransparency=1,Text='Current Order: None',TextColor3=Color3.fromRGB(200,200,200),TextXAlignment=Enum.TextXAlignment.Left,TextScaled=true,Font=Enum.Font.Gotham,TextWrapped=true},C1)
+
+local function updateOrderDisplay()
+	if cfg.UFAOrderedMobs and #cfg.UFAOrderedMobs > 0 then
+		OrderLabel.Text = 'Current Order: ' .. table.concat(cfg.UFAOrderedMobs, ' → ')
+	else
+		OrderLabel.Text = 'Current Order: None'
+	end
+end
+
+-- Clear order button
+local ClearBtn = mk('TextButton',{Size=UDim2.new(0,120,0,28),BackgroundColor3=Color3.fromRGB(180,50,50),BorderSizePixel=0,Text='Clear Order',TextColor3=Color3.fromRGB(255,255,255),TextScaled=true,Font=Enum.Font.Gotham},C1)
+mk('UICorner',{CornerRadius=UDim.new(0,6)},ClearBtn)
+ClearBtn.MouseButton1Click:Connect(function()
+	cfg.UFAOrderedMobs = {}
+	updateOrderDisplay()
+	save()
+end)
+
+-- Mob selection grid (2 columns, click to add to order)
 local MobGrid = mk('Frame',{Size=UDim2.new(1,0,0,0),BackgroundTransparency=1,AutomaticSize=Enum.AutomaticSize.Y},C1)
 local GridLayout = Instance.new('UIGridLayout')
 GridLayout.Parent = MobGrid
@@ -1648,27 +1775,54 @@ GridLayout.CellPadding = UDim2.new(0,8,0,8)
 GridLayout.CellSize = UDim2.new(0.5,-6,0,32)
 GridLayout.SortOrder = Enum.SortOrder.LayoutOrder
 GridLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-local function paint(btn, selected)btn.BackgroundColor3=selected and Color3.fromRGB(40,140,40) or Color3.fromRGB(36,36,48)end
+
 local function makeMobButton(name)
-	local b=Instance.new('TextButton')
-	b.Name='Mob_'..name
-	b.Size=UDim2.new(0,0,0,32)
-	b.BackgroundColor3=Color3.fromRGB(36,36,48)
-	b.BorderSizePixel=0
-	b.Text=name
-	b.TextColor3=Color3.fromRGB(235,235,245)
-	b.TextScaled=true
-	b.Font=Enum.Font.Gotham
-	local corner=Instance.new('UICorner');corner.CornerRadius=UDim.new(0,8);corner.Parent=b
-	paint(b,isMobSelected(name))
-	b.Parent=MobGrid
+	local b = Instance.new('TextButton')
+	b.Name = 'Mob_' .. name
+	b.Size = UDim2.new(0,0,0,32)
+	b.BackgroundColor3 = Color3.fromRGB(36,36,48)
+	b.BorderSizePixel = 0
+	b.Text = name
+	b.TextColor3 = Color3.fromRGB(235,235,245)
+	b.TextScaled = true
+	b.Font = Enum.Font.Gotham
+	local corner = Instance.new('UICorner')
+	corner.CornerRadius = UDim.new(0,8)
+	corner.Parent = b
+	b.Parent = MobGrid
+	
 	b.MouseButton1Click:Connect(function()
-		cfg.UFASelectedMobs[name]=not isMobSelected(name)
-		paint(b,isMobSelected(name))
-		save()
+		-- Add to ordered list if not already present
+		if not table.find(cfg.UFAOrderedMobs, name) then
+			table.insert(cfg.UFAOrderedMobs, name)
+			updateOrderDisplay()
+			save()
+		end
+	end)
+	
+	-- Visual feedback on hover
+	b.MouseEnter:Connect(function()
+		if not table.find(cfg.UFAOrderedMobs, name) then
+			b.BackgroundColor3 = Color3.fromRGB(50,50,60)
+		end
+	end)
+	b.MouseLeave:Connect(function()
+		if not table.find(cfg.UFAOrderedMobs, name) then
+			b.BackgroundColor3 = Color3.fromRGB(36,36,48)
+		end
 	end)
 end
-do local names=uniqueMobNames() for _,name in ipairs(names) do makeMobButton(name) end end
+
+-- Create mob buttons
+do 
+	local names = uniqueMobNames() 
+	for _, name in ipairs(names) do 
+		makeMobButton(name) 
+	end 
+end
+
+-- Initialize display
+updateOrderDisplay()
 
 Toggle(C1,'FireBall Aimbot Catacombs Preset','FireBallAimbot',CatAimbot);Slider(C1,'Fireball Cooldown','fireballCooldown',0.05,1.0,0.1,function()end)
 Toggle(C1,'FireBall Aimbot City Preset','FireBallAimbotCity',CityAimbot);Slider(C1,'City Fireball Cooldown','cityFireballCooldown',0.05,1.0,0.5,function()end)
