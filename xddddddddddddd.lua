@@ -33,7 +33,7 @@ local cfg={
 	UltimateAFKOptimization=false,NoClip=false,PlayerESP=false,MobESP=false,AutoWashDishes=false,
 	AutoNinjaSideTask=false,AutoAnimatronicsSideTask=false,AutoMutantsSideTask=false,DualExoticShop=false,
 	VendingPotionAutoBuy=false,RemoveMapClutter=false,StatWebhook15m=false,KillAura=false,StatGui=false,
-	AutoInvisible=false,AutoResize=false,AutoFly=false,HealthExploit=false,GammaAimbot=false,InfiniteZoom=false,
+	AutoInvisible=false,AutoResize=false,AutoFly=false,AutoTrainStrength=false,HealthExploit=false,GammaAimbot=false,InfiniteZoom=false,
 	AutoConsumePower=false,AutoConsumeHealth=false,AutoConsumeDefense=false,AutoConsumePsychic=false,AutoConsumeMagic=false,AutoConsumeMobility=false,AutoConsumeSuper=false,QuickTeleports=false,
 	KickOnUntrustedPlayers=false,AutoBlock=false,CombatLog=false,ServerHop=false,TeleportOnStart=true,
 	UFAOrderedMobs={},
@@ -1928,6 +1928,9 @@ local function TFly(on)cfg.AutoFly=on;save();getgenv().AutoFly=on;if AA.fly then
 	local a=ev('Events','Other','Ability');local last=0
 	AA.fly=R.Heartbeat:Connect(function()local n=os.clock();if n-last<0.5 then return end;last=n;local tv=LP:FindFirstChild('TempValues');local f=tv and tv:FindFirstChild('IsFlying');if not(f and f.Value==true)then pcall(function()a:InvokeServer('Fly',Vector3.new(1932.461181640625,56.015625,-1965.3206787109375))end)end end)
 end
+local function TTrainStrength(on)cfg.AutoTrainStrength=on;save();getgenv().AutoTrainStrength=on;if not on then return end
+	pcall(function()game:GetService("VirtualInputManager"):SendKeyEvent(true,Enum.KeyCode.One,false,nil)end)
+end
 
 local HExp
 local function resolvePart(which)
@@ -2146,7 +2149,7 @@ Toggle(U1,'Kick On Untrusted Players','KickOnUntrustedPlayers',TKickUntrusted)
 Toggle(U1,'Server Hop','ServerHop',TServerHop)
 Toggle(U1,'Auto Teleport On Start','TeleportOnStart',TTeleportOnStart)
 mk('TextLabel',{Size=UDim2.new(1,-12,0,22),BackgroundTransparency=1,Text='Auto Ability',TextColor3=Color3.fromRGB(235,235,245),TextXAlignment=Enum.TextXAlignment.Left,TextScaled=true,Font=Enum.Font.GothamBold},U1)
-Toggle(U1,'Auto Invisible','AutoInvisible',TInv);Toggle(U1,'Auto Resize','AutoResize',TResize);Toggle(U1,'Auto Fly','AutoFly',TFly)
+Toggle(U1,'Auto Invisible','AutoInvisible',TInv);Toggle(U1,'Auto Resize','AutoResize',TResize);Toggle(U1,'Auto Fly','AutoFly',TFly);Toggle(U1,'Auto Train Strength','AutoTrainStrength',TTrainStrength)
 mk('TextLabel',{Size=UDim2.new(1,-12,0,22),BackgroundTransparency=1,Text='Guis',TextColor3=Color3.fromRGB(235,235,245),TextXAlignment=Enum.TextXAlignment.Left,TextScaled=true,Font=Enum.Font.GothamBold},U1)
 Toggle(U1,'Quick Teleport Gui','QuickTeleports',TQuickTeleports)
 
@@ -2201,6 +2204,7 @@ local LB=Btn(Cfg,'Load Config',function()
 	ap(cfg.AutoInvisible,function()return getgenv().AutoInvisible or false end,TInv)
 	ap(cfg.AutoResize,function()return getgenv().AutoResize or false end,TResize)
 	ap(cfg.AutoFly,function()return getgenv().AutoFly or false end,TFly)
+	ap(cfg.AutoTrainStrength,function()return getgenv().AutoTrainStrength or false end,TTrainStrength)
 	ap(cfg.HealthExploit,function()return getgenv().HealthExploit or false end,THealthExploit)
 	ap(cfg.GammaAimbot,function()return getgenv().GammaAimbot or false end,TGamma)
 	ap(cfg.InfiniteZoom,function()return getgenv().InfiniteZoom or false end,TInfiniteZoom)
