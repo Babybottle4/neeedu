@@ -1664,10 +1664,99 @@ end
 	LP.CharacterAdded:Connect(function(nc) hook(nc:WaitForChild('Humanoid',10)) end)
 end
 
+-- Auto-execute check for place hopping
+if game.PlaceId == 79106917651793 then
+	print("Auto-execute: In PvP server, teleporting back to main game...")
+	-- Disable server hop temporarily to prevent loop
+	getgenv().ServerHop = false
+	-- Add a small delay to prevent immediate re-triggering
+	task.wait(2)
+	TS:Teleport(137681066791460) -- Main game ID
+else
+	-- We're in main game, re-enable server hop after delay
+	task.spawn(function()
+		task.wait(10) -- Wait 10 seconds after joining main game
+		if cfg.ServerHop then
+			getgenv().ServerHop = true
+			print("Re-enabled server hop after delay")
+		end
+	end)
+end
+
 -- Server Hop when YTPVP members join
 local function TServerHop(on)
 	cfg.ServerHop=on;save();getgenv().ServerHop=on
 	if on then
+		-- Use global variables that persist across script executions
+		if not getgenv().lastServerHopTime then
+			getgenv().lastServerHopTime = 0
+		end
+		if not getgenv().lastServerId then
+			getgenv().lastServerId = nil
+		end
+		
+		-- Check if we just rejoined the same server and need to hop again
+		task.spawn(function()
+			task.wait(5) -- Wait for server to fully load
+			
+			local currentServerId = game.JobId
+			local currentPlayerCount = #P:GetPlayers()
+			
+			-- If we have previous server info and we're in the same server
+			if getgenv().lastServerId and getgenv().serverHopReason == "YTPVP_DETECTED" then
+				local timeSinceHop = tick() - (getgenv().lastServerHopTime or 0)
+				
+				print("Checking server after rejoin...")
+				print("Previous JobId:", getgenv().lastServerId)
+				print("Current JobId:", currentServerId)
+				print("Time since hop:", timeSinceHop, "seconds")
+				
+				-- Same server detection
+				if currentServerId == getgenv().lastServerId and timeSinceHop < 300 then -- Within 5 minutes
+					print("⚠️ SAME SERVER DETECTED! Hopping again...")
+					webhook('Server Hop', '⚠️ Same Server Detected', 'Yummy rejoined the same server. Attempting hop again...\n\nJobId: '..currentServerId, nil)
+					
+					-- Try again with small delay
+					task.wait(2)
+					game:Shutdown()
+				else
+					print("✅ Successfully joined different server!")
+					print("Clearing server hop flags...")
+					-- Clear the hop reason since we successfully changed servers
+					getgenv().serverHopReason = nil
+					getgenv().lastServerId = currentServerId
+				end
+			end
+		end)
+		-- Function to trigger automatic server hop for AFK farming
+		local function performAutoServerHop(playerName, clanId)
+			print("🚨 YTPVP MEMBER DETECTED! 🚨")
+			print("Player:", playerName, "Clan ID:", clanId)
+			print("Initiating automatic server hop for AFK farming...")
+			
+			-- Store current server info before leaving
+			getgenv().lastServerId = game.JobId
+			getgenv().lastServerPlayerCount = #P:GetPlayers()
+			getgenv().serverHopReason = "YTPVP_DETECTED"
+			getgenv().lastServerHopTime = tick()
+			
+			print("Storing server info - JobId:", game.JobId, "Players:", #P:GetPlayers())
+			
+			-- Send webhook notification
+			webhook('YTPVP Alert', '🚨 YTPVP Member Detected!', 'Player: '..playerName..' (Clan ID: '..clanId..')\n\n🔄 Automatically server hopping...', nil)
+			
+			-- Write to file for external automation (if needed)
+			pcall(function()
+				writefile("server_hop_trigger.txt", playerName .. "|" .. clanId .. "|" .. tick())
+			end)
+			
+			-- Close Roblox and let Yummy handle rejoining to a different server
+			task.spawn(function()
+				print("Closing Roblox for server hop - Yummy will handle rejoining...")
+				task.wait(2) -- Small delay to ensure webhook is sent
+				game:Shutdown()
+			end)
+		end
 		-- Check existing players with retry mechanism
 		task.spawn(function()
 			for attempt = 1, 3 do
@@ -1706,11 +1795,8 @@ local function TServerHop(on)
 						
 						print("Checking player:", player.Name, "Clan ID:", clanId)
 						
-						if success and clanId and (clanId == 11 or clanId == 3704) then
-							webhook('Server Hop', 'YTPVP Member Detected!', 'Player: '..player.Name..' (Clan ID: '..clanId..')\nServer hopping in 3 seconds...', nil)
-							print("YTPVP member found! Server hopping...")
-							task.wait(3)
-							TS:Teleport(game.PlaceId)
+						if success and clanId and (clanId == 11 or clanId == 3704 or clanId == 999) then
+							performAutoServerHop(player.Name, clanId)
 							return
 						end
 					end
@@ -1759,11 +1845,8 @@ local function TServerHop(on)
 			
 			print("New player joined:", player.Name, "Clan ID:", clanId)
 			
-			if success and clanId and (clanId == 11 or clanId == 3704) then
-				webhook('Server Hop', 'YTPVP Member Joined!', 'Player: '..player.Name..' (Clan ID: '..clanId..')\nServer hopping in 3 seconds...', nil)
-				print("YTPVP member joined! Server hopping...")
-				task.wait(3)
-				TS:Teleport(game.PlaceId)
+			if success and clanId and (clanId == 11 or clanId == 3704 or clanId == 999) then
+				performAutoServerHop(player.Name, clanId)
 			end
 		end)
 	end
