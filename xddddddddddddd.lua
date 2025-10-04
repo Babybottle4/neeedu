@@ -24,7 +24,7 @@ local function webhook(user,title,desc,ping)
 	local pl={username=user,content=content,embeds={{title=title,description=desc,color=16711680,footer={text='Roblox • '..os.date('%H:%M')}}},allowed_mentions={parse={},users=allowed or {}}}
 	pcall(function()r({Url=WURL,Method='POST',Headers={['Content-Type']='application/json'},Body=H:JSONEncode(pl)})end)
 end
-local function deathWH(n,k)webhook('Death Bot','⚠️ Player Killed!',n..' was killed.',WID)end
+local function deathWH(n,k)webhook('Death Bot','⚠️ Player Killed!',n..' was killed by '..(k or 'Unknown')..'.',WID)end
 local function panicWH(n)webhook('Panic Bot','Panic Activated',n..' Triggered Panic',WID)end
 
 local cfg={
@@ -169,10 +169,111 @@ local function initDeathPanic()
 		local h=c:WaitForChild('Humanoid',10);if not h then return end
 		local lastD,dsent,armed=nil,false,true
 		local lastP,MIN=0,5
+		local lastDamageTime=0
+		
+		-- Enhanced damage tracking using game's kill log system
+		h.HealthChanged:Connect(function(hp,oldHp)
+			if oldHp and hp < oldHp then
+				-- Health decreased, try to find killer from game's systems
+				local currentTime=tick()
+				lastDamageTime=currentTime
+				
+				-- Method 1: Check game's kill feed/death messages in PlayerGui
+				local playerGui=LP:FindFirstChild('PlayerGui')
+				if playerGui then
+					-- Look for common kill feed locations
+					local killFeedLocations={
+						'KillFeed','KillLog','DeathLog','CombatLog','Notifications',
+						'HUD','TopUi','BottomUi','LeftUi','RightUi'
+					}
+					
+					for _,locationName in pairs(killFeedLocations)do
+						local location=playerGui:FindFirstChild(locationName)
+						if location then
+							-- Search for recent death messages
+							for _,child in pairs(location:GetDescendants())do
+								if child:IsA('TextLabel')or child:IsA('TextButton')then
+									local text=child.Text:lower()
+									if text:find('killed')or text:find('died')or text:find('eliminated')then
+										-- Extract killer name from death message
+										local killerName=extractKillerFromText(text)
+										if killerName then
+											lastD=killerName
+											break
+										end
+									end
+								end
+							end
+						end
+						if lastD then break end
+					end
+				end
+				
+				-- Method 2: Check ReplicatedStorage for kill data
+				if not lastD then
+					local rs=game:GetService('ReplicatedStorage')
+					local killData=rs:FindFirstChild('KillData')or rs:FindFirstChild('KillLog')or rs:FindFirstChild('CombatData')
+					if killData then
+						-- Try to get recent kill information
+						pcall(function()
+							local recentKill=killData:GetAttribute('LastKill')or killData:GetAttribute('RecentKill')
+							if recentKill and type(recentKill)=='string'then
+								lastD=recentKill
+							end
+						end)
+					end
+				end
+				
+				-- Method 3: Check for nearby players (fallback for close combat)
+				if not lastD then
+					local hrp=c:FindFirstChild('HumanoidRootPart')
+					if hrp then
+						for _,pl in pairs(P:GetPlayers())do
+							if pl~=LP and pl.Character and pl.Character:FindFirstChild('HumanoidRootPart')then
+								local dist=(hrp.Position-pl.Character.HumanoidRootPart.Position).Magnitude
+								if dist<20 then -- Reduced range for close combat only
+									lastD=pl.Name
+									break
+								end
+							end
+						end
+					end
+				end
+			end
+		end)
+		
+		-- Helper function to extract killer name from death message text
+		function extractKillerFromText(text)
+			-- Common patterns: "PlayerName killed You", "You were killed by PlayerName", etc.
+			local patterns={
+				'([%w_]+) killed',
+				'killed by ([%w_]+)',
+				'eliminated by ([%w_]+)',
+				'([%w_]+) eliminated'
+			}
+			
+			for _,pattern in pairs(patterns)do
+				local match=text:match(pattern)
+				if match and match:lower()~='you'and match:lower()~='yourself'then
+					return match
+				end
+			end
+			return nil
+		end
+		
 		h.Died:Connect(function()
-			if cfg.DeathWebhook and not dsent then dsent=true;disableAimbots();deathWH(LP.Name,(lastD and lastD.Name)or'Unknown') else disableAimbots() end
+			if cfg.DeathWebhook and not dsent then 
+				dsent=true
+				disableAimbots()
+				local killerName=lastD or 'Unknown'
+				deathWH(LP.Name,killerName)
+			else 
+				disableAimbots() 
+			end
 			armed=true
 		end)
+		
+		-- Panic system
 		h.HealthChanged:Connect(function(hp)
 			local m=h.MaxHealth;if not m or m<=0 then return end
 			local r,now=hp/m,os.clock()
@@ -180,8 +281,20 @@ local function initDeathPanic()
 				if(now-lastP)<MIN then return end;lastP=now;armed=false;disableAimbots()
 			elseif r>=REARM then armed=true end
 		end)
+		
+		-- Enhanced damage detection through touched events
 		task.defer(function()
-			for _,p in ipairs(workspace:GetDescendants())do if p:IsA('BasePart')then p.Touched:Connect(function(hit)local pl=P:GetPlayerFromCharacter(hit.Parent);if pl then lastD=pl.Character end end)end end
+			for _,p in ipairs(workspace:GetDescendants())do 
+				if p:IsA('BasePart')then 
+					p.Touched:Connect(function(hit)
+						local pl=P:GetPlayerFromCharacter(hit.Parent)
+						if pl and pl~=LP then 
+							lastD=pl.Name
+							lastDamageTime=tick()
+						end
+					end)
+				end 
+			end
 		end)
 	end
 	if LP.Character then hook(LP.Character) end;LP.CharacterAdded:Connect(hook)
@@ -1594,7 +1707,7 @@ local function TStatWH(on)cfg.StatWebhook15m=on;save();getgenv().StatWebhook15m=
 			local np,nd,nh,nm,ny,nmob,nt=st.Power.Value,st.Defense.Value,st.Health.Value,st.Magic.Value,st.Psychics.Value,st.Mobility.Value,st.Tokens.Value
 			if np>op or nd>od or nh>oh or nm>om or ny>oy or nmob>omob or nt~=ot then
 				local t=LP.Name..' Stats Gained Last 15 Minutes'
-				local d='💪 **Power:** '..fmt(np)..' → **'..fmt(np-op)..'**\n❤️ **Health:** '..fmt(nh)..' → **'..fmt(nh-oh)..'**\n🛡️ **Defense:** '..fmt(nd)..' → **'..fmt(nd-od)..'**\n🔮 **Psychics:** '..fmt(ny)..' → **'..fmt(ny-oy)..'**\n✨ **Magic:** '..fmt(nm)..' → **'..fmt(nm-om)..'**\n💨 **Mobility:** '..fmt(nmob)..' → **'..fmt(nmob-omob)..'**\n💰 **Tokens:** '..fmt(nt)..' → **'..fmtChange(nt-ot)..'**'
+				local d='💪 **Power:** '..fmt(np)..' → **'..fmt(np-op)..'**\n❤️ **Health:** '..fmt(nh)..' → **'..fmt(nh-oh)..'**\n🛡️ **Defense:** '..fmt(nd)..' → **'..fmt(nd-od)..'**\n🔮 **Psychics:** '..fmt(ny)..' → **'..fmt(ny-oy)..'**\n✨ **Magic:** '..fmt(nm)..' → **'..fmt(nm-om)..'**\n💨 **Mobility:** '..fmt(nmob)..' → **'..fmt(nmob-omob)..'**\n💰 **Tokens:** '..fmt(nt)..' → **'..fmtChange(nt-ot)..'**\n⚔️ **Mob Kills:** '..(sessionMobKills or 0)..'**'
 				webhook('Stat Bot',t,d,nil);op,od,oh,om,oy,omob,ot=np,nd,nh,nm,ny,nmob,nt
 			end
 		end
